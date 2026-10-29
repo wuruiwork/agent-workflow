@@ -12,9 +12,13 @@
 git clone https://github.com/wuruiwork/agent-workflow.git
 cd agent-workflow
 
-./install.sh                 # Node.js / Claude Code / skills / flows / 插件
+./install.sh                 # 终端里会先让你多选要安装的组件
 ./scripts/open-editor.sh     # 打开流程编辑器
 ```
+
+`install.sh` 在终端中会列出可安装组件（Node.js、Claude Code、glab、skills、flows、插件），
+可以多选编号，直接回车表示全部；安装系统依赖前会先询问。非交互场景用 `--yes` 自动确认，
+或用 `--select` 直接指定组件。
 
 给某个项目接入流程：
 
@@ -119,14 +123,22 @@ actions:
 ## 安装选项
 
 ```bash
-./install.sh --dry-run      # 只打印操作
-./install.sh --force        # 覆盖已有 skills/flows，重装 Claude Code
-./install.sh --link         # 用符号链接代替复制，仓库改动立即生效
-./install.sh --no-claude    # 跳过 Claude Code
-./install.sh --no-plugins   # 跳过插件市场配置
-./install.sh --no-glab      # 跳过 glab 安装与登录检查
+./install.sh --select skills,flows        # 只装指定组件
+./install.sh --plugins ppt-master         # 只启用指定插件
+./install.sh --yes                        # 全部组件，自动确认依赖安装
+./install.sh --no-input                   # 非交互：跳过缺失依赖，只复制文件
+./install.sh --dry-run                    # 只打印操作
+./install.sh --force                      # 覆盖已有 skills/flows，重装 Claude Code
+./install.sh --link                       # 用符号链接代替复制，仓库改动立即生效
+./install.sh --no-node                    # 跳过 Node.js
+./install.sh --no-claude                  # 跳过 Claude Code
+./install.sh --no-plugins                 # 跳过插件市场配置
+./install.sh --no-glab                    # 跳过 glab 安装与登录检查
 CLAUDE_CONFIG_DIR=/custom/dir ./install.sh
 ```
+
+组件名：`node`、`claude`、`glab`、`skills`、`flows`、`plugins`。
+插件名：`document-skills`、`ppt-master`。
 
 ## 要求
 
