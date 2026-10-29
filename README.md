@@ -110,12 +110,12 @@ actions:
 
 ```bash
 ./scripts/open-editor.sh                              # 只编辑本仓库的流程
-./scripts/open-editor.sh ~/projects/foo               # 同时编辑该项目的 profile
-./scripts/open-editor.sh /path/with spaces/repo       # 含空格路径直接写，不用引号
+./scripts/open-editor.sh --project ~/projects/foo     # 同时编辑该项目的 profile
+./scripts/open-editor.sh --project /path/with spaces/repo   # 含空格路径不用加引号
 ./scripts/open-editor.sh --port 5000 --no-open        # 指定端口、不自动开浏览器
 ```
 
-项目路径可以直接作为第一个参数，不需要 `--project`；路径含空格时会自动合并，也支持 `~`。
+项目路径仍需 `--project`；路径含空格时不用加引号，会被自动合并，也支持 `~`。
 
 功能：
 
