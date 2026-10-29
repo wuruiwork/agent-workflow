@@ -35,6 +35,7 @@ cd agent-workflow
 | `examples/profile.yaml` | 项目级 git 动作档案示例 |
 | `scripts/init-project.sh` | 把 profile、skillgate 策略和 `.gitignore` 条目写入目标项目 |
 | `scripts/open-editor.sh` | 启动编辑器并自动打开浏览器 |
+| `docs/glab-setup.md` | glab 安装、token 与 `glab auth login` 完整说明 |
 
 ## 流程与 git 动作怎么配合
 
@@ -132,7 +133,7 @@ CLAUDE_CONFIG_DIR=/custom/dir ./install.sh
 - Node.js ≥ 18（`install.sh` 会尝试通过 brew 或 apt 安装）
 - Claude Code（`install.sh` 会通过 npm 安装）
 - `git`
-- [`glab`](https://gitlab.com/gitlab-org/cli)（`install.sh` 会尝试通过 brew / apt 安装，并检查登录状态；没有可用的安装源时会打印手动安装命令）。创建 MR 前需要先 `glab auth login`；不用 MR 时可 `--no-glab`
+- [`glab`](https://gitlab.com/gitlab-org/cli)（`install.sh` 会尝试通过 brew / apt 安装，并检查登录状态；没有可用的安装源时会打印手动安装命令）。创建 MR 前需要先 `glab auth login`，完整步骤见 [docs/glab-setup.md](docs/glab-setup.md)；不用 MR 时可 `--no-glab`
 - 门禁依赖 [`@reneza/skillgate`](https://github.com/renezander030/skillgate)，由 `flow-runner` / `npx` 自动调用
 
 ## 常见问题

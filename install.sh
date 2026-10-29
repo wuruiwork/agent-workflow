@@ -103,6 +103,7 @@ if [ "$INSTALL_GLAB" = 1 ]; then
     curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/gitlab-cli/script.deb.sh | sudo bash
     sudo apt-get install glab
   其它: https://gitlab.com/gitlab-org/cli
+详细步骤: https://github.com/wuruiwork/agent-workflow/blob/main/docs/glab-setup.md
 GLAB
   fi
 
@@ -110,7 +111,7 @@ GLAB
     if glab auth status >/dev/null 2>&1; then
       echo "glab 已登录"
     else
-      echo "glab 未登录：创建 MR 前请运行 glab auth login"
+      echo "glab 未登录：创建 MR 前请运行 glab auth login（步骤见 docs/glab-setup.md）"
     fi
   fi
 fi
