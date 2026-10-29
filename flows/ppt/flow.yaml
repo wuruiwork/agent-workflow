@@ -1,0 +1,70 @@
+name: ppt
+version: 2
+description: 项目演示文稿：简报 → 大纲 → 内容 → 设计 → 生成 PPTX → 视觉评审 → 导出
+policy: policy.yaml
+artifacts: presentations/current
+archive: presentations
+
+# 动作槽位。流程只声明“哪里需要 git 动作”，具体做什么由项目
+# .claude/flows/profile.yaml 的 bindings 决定；没有 profile 时全部为 no-op。
+checkpoints: [stage_end, finish]
+
+stages:
+  - id: brief
+    type: doc
+    ref: stages/brief.md
+    artifact: 00-brief.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: outline
+    type: doc
+    ref: stages/outline.md
+    artifact: 10-outline.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: content
+    type: doc
+    ref: stages/content.md
+    artifact: 20-content.md
+    gate: done
+    hooks: [stage_end]
+
+  - id: design
+    type: doc
+    ref: stages/design.md
+    artifact: 30-design.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: build
+    type: doc
+    ref: stages/build.md
+    artifact: 40-deck.pptx
+    gate: done
+    hooks: [stage_end]
+
+  - id: review
+    type: doc
+    ref: stages/review.md
+    artifact: 50-review.md
+    gate: pass
+    hooks: [stage_end]
+
+  - id: export
+    type: doc
+    ref: stages/export.md
+    artifact: 60-deck.pdf
+    gate: done
+    hooks: [stage_end]
+
+  - id: archive
+    type: doc
+    ref: stages/archive.md
+    artifact: presentations
+    gate: done
+    hooks: [stage_end, finish]

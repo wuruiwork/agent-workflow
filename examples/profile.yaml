@@ -1,0 +1,90 @@
+# 项目级 git 动作档案示例。
+#
+# flow-runner / git-action 读取项目根目录的 .claude/flows/profile.yaml，
+# 把通用流程的阶段槽位解析成这个项目的提交、推送、MR 行为。
+# 复制到目标项目后按实际情况修改；本机差异写入 profile.local.yaml（不入库）。
+
+version: 1
+
+git:
+  provider: gitlab
+  push_remote: origin          # 日常推送目标（个人 fork）
+  upstream_remote: upstream    # 团队主仓库
+  base_branch: main
+  protected: [main]
+  on_base_branch: refuse       # main 上拒绝提交，先切分支；也可设为 create
+  branch:
+    pattern: '^(feat|fix|docs|test|chore|refactor)/[a-z0-9._-]+$'
+    create_from: upstream/main
+
+actions:
+  commit:
+    add:
+      deny:
+        - ".env"
+        - ".env.*"
+        - "*.key"
+        - "*.pem"
+        - ".tmp/"
+        - ".skillgate/phase"
+        - ".skillgate/evidence/"
+    message:
+      format: conventional
+      language: zh
+      type_by_stage:
+        brief: docs
+        design: docs
+        tasks: docs
+        implement: auto
+        review: chore
+        verify: test
+        archive: docs
+      scope_by_stage:
+        brief: spec
+        design: spec
+        tasks: spec
+        verify: test
+        archive: spec
+  push:
+    remote: origin
+    set_upstream: true
+    forbid_force: true
+  mr:
+    tool: glab
+    # 两级 MR：
+    # 1. review：工作分支 -> origin/main
+    # 2. sync-upstream：origin/main -> upstream/main，
+    #    领先 30 个提交或主干安静 7 天时创建。
+    targets:
+      - id: review
+        head: current_branch
+        base: origin/main
+        when: always
+      - id: sync-upstream
+        head: origin/main
+        base: upstream/main
+        when:
+          any:
+            - ahead_by: 30
+            - idle_days: 7
+        title: "chore: 同步 origin main 到 upstream main（{ahead} 个提交）"
+    sections: [变更目的, 影响范围, 测试结果, 关联 Issue, 脱敏情况]
+
+# 阶段 × 槽位 -> 动作。流程只声明槽位，这里决定执行什么。
+bindings:
+  brief:     { stage_end: [commit, push] }
+  design:    { stage_end: [commit, push] }
+  tasks:     { stage_end: [commit, push] }
+  implement: { stage_end: [commit, push] }
+  review:    { stage_end: [commit, push] }
+  verify:    { stage_end: [commit, push] }
+  archive:   { stage_end: [commit], finish: [push, mr] }
+
+  # 其它流程的独有阶段
+  plan:      { stage_end: [commit, push] }
+  reproduce: { stage_end: [commit, push] }
+  draft:     { stage_end: [commit, push] }
+  outline:   { stage_end: [commit, push] }
+  content:   { stage_end: [commit, push] }
+  build:     { stage_end: [commit, push] }
+  export:    { stage_end: [commit, push] }

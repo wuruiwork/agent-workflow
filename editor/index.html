@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>流程编辑器 · agent-workflow</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <strong>agent-workflow</strong>
+      <span class="muted">流程编辑器</span>
+    </div>
+    <div class="env" id="env"></div>
+    <div class="topbar-actions">
+      <span id="status" class="status"></span>
+      <button id="btn-save-flow" class="btn primary">保存流程</button>
+      <button id="btn-save-profile" class="btn">保存 profile</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="panel-title">流程</div>
+      <div id="flow-list" class="flow-list"></div>
+      <button id="btn-new-flow" class="btn ghost wide">＋ 新建流程</button>
+
+      <div class="panel-title">当前项目</div>
+      <div id="project-info" class="project-info"></div>
+      <div class="row">
+        <input id="project-input" class="input" placeholder="/path/to/project">
+        <button id="btn-connect" class="btn">连接</button>
+      </div>
+      <p class="hint">连接后，「保存 profile」写入该项目的 <code>.claude/flows/profile.yaml</code>；未连接时写入本仓库的 <code>examples/profile.yaml</code>。</p>
+    </aside>
+
+    <section class="canvas">
+      <div id="flow-meta" class="flow-meta"></div>
+      <div id="stages" class="stages"></div>
+      <div class="canvas-actions">
+        <button id="btn-add-stage" class="btn ghost">＋ 添加阶段</button>
+        <span class="hint">拖动卡片调整顺序</span>
+      </div>
+    </section>
+
+    <aside class="inspector">
+      <div class="tabs">
+        <button class="tab active" data-tab="bindings">阶段动作</button>
+        <button class="tab" data-tab="profile">项目配置</button>
+        <button class="tab" data-tab="yaml">YAML</button>
+      </div>
+      <div class="tab-panel active" id="tab-bindings"></div>
+      <div class="tab-panel" id="tab-profile"></div>
+      <div class="tab-panel" id="tab-yaml"></div>
+    </aside>
+  </main>
+
+  <script src="/vendor/js-yaml.umd.min.cjs"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

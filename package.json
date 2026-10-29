@@ -1,0 +1,13 @@
+{
+  "name": "agent-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "通用流程 + 项目级 git 动作 + 可视化流程编辑器",
+  "scripts": {
+    "editor": "node editor/server.mjs",
+    "help": "node editor/server.mjs --help"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

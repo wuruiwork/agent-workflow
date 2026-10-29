@@ -1,0 +1,63 @@
+name: doc-first
+version: 2
+description: 文档先行：澄清 → 设计 → 任务 → 实现 → 代码审查 → 验证 → 归档
+policy: policy.yaml
+artifacts: docs/specs/current
+archive: docs/specs
+
+# 动作槽位。流程只声明“哪里需要 git 动作”，具体做什么由项目
+# .claude/flows/profile.yaml 的 bindings 决定；没有 profile 时全部为 no-op。
+checkpoints: [stage_end, finish]
+
+stages:
+  - id: brief
+    type: doc
+    ref: stages/brief.md
+    artifact: 00-brief.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: design
+    type: doc
+    ref: stages/design.md
+    artifact: 10-design.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: tasks
+    type: doc
+    ref: stages/tasks.md
+    artifact: 20-tasks.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: implement
+    type: skill
+    ref: df-implement
+    artifact: 30-impl.md
+    gate: done
+    hooks: [stage_end]
+
+  - id: review
+    type: skill
+    ref: code-review
+    artifact: 35-review.md
+    gate: pass
+    hooks: [stage_end]
+
+  - id: verify
+    type: skill
+    ref: df-verify
+    artifact: 40-verify.md
+    gate: pass
+    hooks: [stage_end]
+
+  - id: archive
+    type: doc
+    ref: stages/archive.md
+    artifact: docs/specs
+    gate: done
+    hooks: [stage_end, finish]

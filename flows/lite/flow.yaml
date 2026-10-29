@@ -1,0 +1,32 @@
+name: lite
+version: 2
+description: 小型项目/小改动的轻量流程：plan-code 设计+实现 → 验证 → 归档
+policy: policy.yaml
+artifacts: docs/specs/current
+archive: docs/specs
+
+# 动作槽位。流程只声明“哪里需要 git 动作”，具体做什么由项目
+# .claude/flows/profile.yaml 的 bindings 决定；没有 profile 时全部为 no-op。
+checkpoints: [stage_end, finish]
+
+stages:
+  - id: plan
+    type: skill
+    ref: plan-code
+    artifact: 00-plan.md
+    gate: implemented
+    hooks: [stage_end]
+
+  - id: verify
+    type: doc
+    ref: stages/verify.md
+    artifact: 40-verify.md
+    gate: pass
+    hooks: [stage_end]
+
+  - id: archive
+    type: doc
+    ref: stages/archive.md
+    artifact: docs/specs
+    gate: done
+    hooks: [stage_end, finish]

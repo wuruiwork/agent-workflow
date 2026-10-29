@@ -1,0 +1,4 @@
+#!/bin/sh
+# Installed by the doc-first flow template.
+# Blocks push until .skillgate/done.yaml gates pass.
+exec npx --yes @reneza/skillgate@0.16.0 gate --command "git push"

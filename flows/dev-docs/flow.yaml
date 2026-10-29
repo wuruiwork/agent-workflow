@@ -1,0 +1,55 @@
+name: dev-docs
+version: 2
+description: 开发文档交付：澄清 → 草稿 → 评审 → Word → PDF → 归档
+policy: policy.yaml
+artifacts: docs/deliverables/current
+archive: docs/deliverables
+
+# 动作槽位。流程只声明“哪里需要 git 动作”，具体做什么由项目
+# .claude/flows/profile.yaml 的 bindings 决定；没有 profile 时全部为 no-op。
+checkpoints: [stage_end, finish]
+
+stages:
+  - id: brief
+    type: doc
+    ref: stages/brief.md
+    artifact: 00-brief.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: draft
+    type: doc
+    ref: stages/draft.md
+    artifact: 10-draft.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  - id: review
+    type: doc
+    ref: stages/review.md
+    artifact: 20-review.md
+    gate: pass
+    hooks: [stage_end]
+
+  - id: build
+    type: doc
+    ref: stages/build.md
+    artifact: 30-doc.docx
+    gate: done
+    hooks: [stage_end]
+
+  - id: export
+    type: doc
+    ref: stages/export.md
+    artifact: 40-doc.pdf
+    gate: done
+    hooks: [stage_end]
+
+  - id: archive
+    type: doc
+    ref: stages/archive.md
+    artifact: docs/deliverables
+    gate: done
+    hooks: [stage_end, finish]
