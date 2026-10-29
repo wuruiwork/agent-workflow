@@ -423,11 +423,11 @@ agents:   ${AGENTS:-（无）}
   2. 登录检查：
        GitLab: glab auth status（未登录时 glab auth login）
        GitHub: gh auth status（未登录时 gh auth login）
-  3. 打开流程编辑器：
-       ./scripts/open-editor.sh
-       ./scripts/open-editor.sh --project /path/to/your/repo
-  4. 给某个项目接入流程：
+  3. 给某个项目接入流程（生成 profile、门禁和 .gitignore）：
        ./scripts/init-project.sh /path/to/your/repo doc-first
+  4. 打开流程编辑器调整（接入后再打开才有 profile 可编辑）：
+       ./scripts/open-editor.sh --project /path/to/your/repo
+       ./scripts/open-editor.sh        # 只编辑共享流程，不改项目
   5. 在该项目里让 agent 走对应流程（Claude Code 可直接说「走文档先行流程」）。
 
 安装位置：

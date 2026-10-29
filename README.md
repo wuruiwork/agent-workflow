@@ -12,19 +12,16 @@
 git clone https://github.com/wuruiwork/agent-workflow.git
 cd agent-workflow
 
-./install.sh                 # 终端里会先让你多选要安装的组件
-./scripts/open-editor.sh     # 打开流程编辑器
+./install.sh                                              # 安装 skills / flows / CLI
+./scripts/init-project.sh ~/projects/foo doc-first        # 给项目接入流程
+./scripts/open-editor.sh --project ~/projects/foo         # 打开编辑器调整 profile
 ```
 
 `install.sh` 默认安装大部分组件，在终端里只让你多选两件事：
 **agent**（Claude Code / Codex）和**代码托管平台**（GitLab / GitHub / Gitee）。
 安装系统依赖前会先询问；非交互场景用 `--yes`，或用 `--agents` / `--hosts` 直接指定。
 
-给某个项目接入流程：
-
-```bash
-./scripts/init-project.sh ~/projects/foo doc-first
-```
+只有 `open-editor.sh` 不带 `--project` 时才是编辑共享流程；接入项目后要带 `--project` 才能编辑该项目的 profile。
 
 然后在项目里对 Claude 说「走文档先行流程」，或使用 `/flow-runner doc-first`。
 
