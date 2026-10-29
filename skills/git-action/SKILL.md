@@ -145,6 +145,8 @@ description: >
    git fetch --quiet <base_remote> <base_branch>
    ```
 
+4. `mr.tool` 必须是 `glab`、`gh` 或 `gitee`；缺失或未知时停止，不猜测。
+
 ### 每个目标
 
 1. **解析 head / base**
@@ -162,30 +164,44 @@ description: >
    - 条件不成立时报告 **no-op** 并给出实际值（当前领先 X 个提交、距上次提交 Y 天）。
    - 条件无法判定（远端或分支不存在、fetch 失败）：停止，不猜测。
 
-3. **幂等**
+3. **幂等**（按 `mr.tool` 选择命令）
 
    ```bash
+   # glab
    glab mr list -R "<target_project>" -s "<head_branch>" -b "<base_branch>" -F json
+   # gh
+   gh pr list -R "<target_project>" --head "<head_branch>" --base "<base_branch>" --state open --json url
+   # gitee
+   gitee pr list -R "<target_project>" --head "<head_branch>" --base "<base_branch>" --json
    ```
 
-   已有 open MR 时报告链接并跳过该目标，不重复创建。
+   已有 open MR/PR 时报告链接并跳过该目标，不重复创建。
 
 4. **生成标题与描述**
    - 标题：目标配置了 `title` 时按模板渲染（`{ahead}` = 领先提交数，`{feature}` = FEATURE）；否则用 `<type>: <FEATURE 的可读名称>`。
    - 描述：按 `mr.sections` 从 `description_from` 指定的产物提取；`ahead_by` 目标的描述改为列出 `git log --oneline <base>..<head>` 的提交主题。
    - 缺产物时标注「未提供」，不编造测试结果。
 
-5. **创建（不进入交互编辑）**
+5. **创建（按 `mr.tool` 选择命令，不进入交互编辑）**
 
    ```bash
-   # head 与目标项目相同
+   # glab：head 与目标项目相同
    glab mr create -R "<target_project>" -s "<head_branch>" -b "<base_branch>" \
      -t "<title>" -d "<body>" -y
-
-   # head 在另一个项目（如 fork → upstream）
+   # glab：head 在另一个项目（fork → upstream）
    glab mr create -R "<target_project>" -H "<head_project>" \
      -s "<head_branch>" -b "<base_branch>" -t "<title>" -d "<body>" -y
+
+   # gh：fork 场景 head 用 <owner>:<branch>
+   gh pr create -R "<target_project>" --head "<head_branch>" --base "<base_branch>" \
+     -t "<title>" -b "<body>"
+
+   # gitee：fork 场景 head 用 <owner>:<branch>
+   gitee pr create -R "<target_project>" --head "<head_branch>" --base "<base_branch>" \
+     -t "<title>" -b "<body>" --json --no-tui
    ```
+
+   `glab -y` / `gitee --no-tui` 跳过交互；`gh` 在提供 `-t`/`-b` 后不再提示。
 
    `-H` 必须显式指定 head 项目，否则 glab 可能挑到错误项目。失败时停止并输出可手动点击的 MR 创建地址，不重复尝试。
 

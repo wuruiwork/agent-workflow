@@ -1,4 +1,4 @@
-# glab 安装与登录
+# Git 托管平台接入：token、CLI 与登录
 
 `git-action` 的 `mr` 动作通过 [`glab`](https://gitlab.com/gitlab-org/cli) 创建 Merge Request。
 只用 `commit` / `push` 的项目不需要 glab；profile 里配置了 `mr.targets` 才需要。
@@ -98,11 +98,34 @@ Gitee API 或 CI 使用——当前 `git-action` 的 `mr` 动作只支持 GitLab
 2. 勾选权限：**`projects`**（仓库读写）、**`pull_requests`**（Pull Request）、
    **`issues`**（Issue，可选）、**`notes`**（评论，可选）。
 3. 生成后立即复制 token，页面关闭后无法再次查看。
-4. 使用方式：
+4. 安装官方 Gitee CLI：
+
+   ```bash
+   npm install -g @gitee/gitee-cli
+   gitee --version
+   ```
+
+   或使用官方安装脚本：
+
+   ```bash
+   curl -fsSL https://gitee.com/oschina/gitee-cli/raw/main/scripts/install.sh | sh
+   ```
+
+5. 登录：
+
+   ```bash
+   gitee auth login                                              # 交互粘贴 token
+   printf '%s' "$GITEE_TOKEN" | gitee auth login --with-token     # 非交互
+   gitee auth status                                             # 查看状态
+   ```
+
+   凭据保存在 `~/.config/gitee/credentials.yml`。
+
+6. 使用方式：
    - HTTPS 拉取/推送时，用户名填 Gitee 账号，密码填 token。
    - CI 中通过平台 secret 注入 `GITEE_TOKEN`，不要写进仓库。
-   - 创建 Pull Request 目前用 Gitee 网页或 API；Gitee 暂无像 `glab` / `gh` 那样
-     稳定通用的官方 CLI，`git-action` 也不会自动创建 Gitee PR。
+   - 创建 PR：`gitee pr create -R owner/repo --base main --head <branch> -t "..." -b "..."`；
+     列表：`gitee pr list -R owner/repo --json`。
 
 ## 3. 登录
 
@@ -218,14 +241,13 @@ glab mr list -R <group>/<project> --per-page 5
 
 ## 8. 与本仓库的关系
 
-`git-action` 在 `mr` 动作里只使用以下命令，profile 中通过 `actions.mr.tool: glab` 开启：
+`git-action` 的 `mr` 动作由 profile 的 `actions.mr.tool` 选择：
 
-```bash
-glab mr list   -R <target> -s <head> -b <base> -F json
-glab mr create -R <target> [-H <head_project>] -s <head> -b <base> -t <title> -d <body> -y
-```
+| tool | 列表 | 创建 |
+|---|---|---|
+| `glab` | `glab mr list -R <target> -s <head> -b <base> -F json` | `glab mr create -R <target> [-H <head_project>] -s <head> -b <base> -t <title> -d <body> -y` |
+| `gh` | `gh pr list -R <target> --head <head> --base <base> --state open --json url` | `gh pr create -R <target> --head <head> --base <base> -t <title> -b <body>` |
+| `gitee` | `gitee pr list -R <target> --head <head> --base <base> --json` | `gitee pr create -R <target> --head <head> --base <base> -t <title> -b <body> --json --no-tui` |
 
-`install.sh` 会检查 glab 是否安装、是否登录；`glab auth login` 需要交互输入，脚本不会代填。
-
-GitHub / Gitee 目前没有接入 `git-action` 的自动 MR：需要时扩展 `actions.mr.tool`，
-或先用对应平台的手工流程创建 PR，再让 flow 继续推进。
+fork → 上游时，`gh` / `gitee` 的 head 使用 `<owner>:<branch>` 形式（以各自文档为准）。
+`install.sh` 会检查对应 CLI 是否安装、是否登录；登录命令需要交互输入或 `--with-token`，脚本不会代填。

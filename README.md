@@ -162,7 +162,7 @@ agent：`claude`、`codex`；托管平台：`gitlab`、`github`、`gitee`。
 - `git`
 - [`glab`](https://gitlab.com/gitlab-org/cli)（GitLab；`install.sh` 会尝试通过 brew / apt 安装并检查 `glab auth status`）
 - [`gh`](https://cli.github.com/)（GitHub；`install.sh` 会尝试通过 brew / apt 安装并检查 `gh auth status`）
-- Gitee 暂无通用官方 CLI，PR 需要网页或 Gitee API 创建
+- [`gitee`](https://gitee.com/oschina/gitee-cli)（Gitee 官方 CLI；`install.sh` 会通过 npm 安装并检查 `gitee auth status`）
 - token 与登录步骤见 [docs/glab-setup.md](docs/glab-setup.md)；对应平台可用 `--no-gitlab` / `--no-github` / `--no-gitee` 跳过
 - 门禁依赖 [`@reneza/skillgate`](https://github.com/renezander030/skillgate)，由 `flow-runner` / `npx` 自动调用
 

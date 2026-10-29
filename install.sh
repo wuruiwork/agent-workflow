@@ -37,7 +37,7 @@ usage() {
   --no-codex        不安装 Codex
   --no-gitlab       不安装/检查 GitLab CLI (glab)
   --no-github       不安装/检查 GitHub CLI (gh)
-  --no-gitee        不显示 Gitee token 指引
+  --no-gitee        不安装/检查 Gitee CLI (gitee)
   --no-node         跳过 Node.js 检查/安装
   --no-skills       跳过 skills 复制
   --no-flows        跳过流程复制
@@ -119,7 +119,7 @@ choose_hosts() {
   echo "选择代码托管平台（空格分隔编号；直接回车=全部）："
   printf '  1) %-7s %s\n' gitlab "$(if command -v glab >/dev/null 2>&1; then echo "glab 已安装"; else echo "glab 未安装"; fi)"
   printf '  2) %-7s %s\n' github "$(if command -v gh >/dev/null 2>&1; then echo "gh 已安装"; else echo "gh 未安装"; fi)"
-  printf '  3) %-7s %s\n' gitee "无官方 CLI，仅提供 token 指南"
+  printf '  3) %-7s %s\n' gitee "$(if command -v gitee >/dev/null 2>&1; then echo "gitee 已安装"; else echo "gitee 未安装"; fi)"
   printf '> '
   read -r answer || true
   [ -n "${answer// /}" ] || return 0
@@ -305,7 +305,23 @@ if has_host github; then
 fi
 
 if has_host gitee; then
-  echo "Gitee: 暂无通用官方 CLI；Pull Request 用网页或 API 创建，token 见 docs/glab-setup.md#23-gitee"
+  if command -v gitee >/dev/null 2>&1; then
+    echo "Gitee: $(gitee --version 2>/dev/null | head -1)"
+  elif ! command -v npm >/dev/null 2>&1; then
+    echo "Gitee: 未找到 npm，跳过 gitee CLI 安装（先安装 Node.js）" >&2
+  else
+    echo "Gitee: 未找到 gitee CLI"
+    if confirm_install "是否执行 npm install -g @gitee/gitee-cli？"; then
+      run npm install -g @gitee/gitee-cli
+    fi
+  fi
+  if command -v gitee >/dev/null 2>&1; then
+    if gitee auth status --json 2>/dev/null | grep -q '"status"[[:space:]]*:[[:space:]]*"logged in"'; then
+      echo "  gitee 已登录"
+    else
+      echo "  gitee 未登录：运行 gitee auth login（token 见 docs/glab-setup.md#23-gitee）"
+    fi
+  fi
 fi
 
 # ---- skills / flows ----
