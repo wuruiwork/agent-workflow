@@ -16,9 +16,9 @@ cd agent-workflow
 ./scripts/open-editor.sh     # 打开流程编辑器
 ```
 
-`install.sh` 在终端中会列出可安装组件（Node.js、Claude Code、Codex、glab、skills、flows、插件），
-可以多选编号，直接回车表示全部；安装系统依赖前会先询问。非交互场景用 `--yes` 自动确认，
-或用 `--select` 直接指定组件。
+`install.sh` 默认安装大部分组件，在终端里只让你多选两件事：
+**agent**（Claude Code / Codex）和**代码托管平台**（GitLab / GitHub / Gitee）。
+安装系统依赖前会先询问；非交互场景用 `--yes`，或用 `--agents` / `--hosts` 直接指定。
 
 给某个项目接入流程：
 
@@ -132,23 +132,27 @@ actions:
 ## 安装选项
 
 ```bash
-./install.sh --select skills,flows        # 只装指定组件
-./install.sh --plugins ppt-master         # 只启用指定插件
-./install.sh --yes                        # 全部组件，自动确认依赖安装
+./install.sh --agents claude,codex        # agent 多选
+./install.sh --hosts gitlab,github        # 托管平台多选
+./install.sh --yes                        # 全部，自动确认依赖安装
 ./install.sh --no-input                   # 非交互：跳过缺失依赖，只复制文件
 ./install.sh --dry-run                    # 只打印操作
-./install.sh --force                      # 覆盖已有 skills/flows，重装 Claude Code
+./install.sh --force                      # 覆盖已有 skills/flows，重装 CLI
 ./install.sh --link                       # 用符号链接代替复制，仓库改动立即生效
 ./install.sh --no-node                    # 跳过 Node.js
-./install.sh --no-claude                  # 跳过 Claude Code
-./install.sh --no-codex                   # 跳过 Codex
-./install.sh --no-plugins                 # 跳过插件市场配置
-./install.sh --no-glab                    # 跳过 glab 安装与登录检查
+./install.sh --no-claude                  # 不安装 Claude Code
+./install.sh --no-codex                   # 不安装 Codex
+./install.sh --no-gitlab                  # 不安装/检查 glab
+./install.sh --no-github                  # 不安装/检查 gh
+./install.sh --no-gitee                   # 不显示 Gitee 指引
+./install.sh --no-skills                  # 跳过 skills 复制
+./install.sh --no-flows                   # 跳过流程复制
+./install.sh --no-plugins                 # 跳过 Claude Code 插件配置
 CLAUDE_CONFIG_DIR=/custom/dir CODEX_HOME=/custom/codex ./install.sh
 ```
 
-组件名：`node`、`claude`、`codex`、`glab`、`skills`、`flows`、`plugins`。
-插件名：`document-skills`、`ppt-master`。
+agent：`claude`、`codex`；托管平台：`gitlab`、`github`、`gitee`。
+其余组件（Node.js、skills、flows、插件）默认安装。
 
 ## 要求
 
@@ -156,7 +160,10 @@ CLAUDE_CONFIG_DIR=/custom/dir CODEX_HOME=/custom/codex ./install.sh
 - Claude Code（`install.sh` 会通过 npm 安装）
 - Codex CLI（可选，`install.sh` 会通过 `npm install -g @openai/codex` 安装）
 - `git`
-- [`glab`](https://gitlab.com/gitlab-org/cli)（`install.sh` 会尝试通过 brew / apt 安装，并检查登录状态；没有可用的安装源时会打印手动安装命令）。创建 MR 前需要先 `glab auth login`，完整步骤见 [docs/glab-setup.md](docs/glab-setup.md)；不用 MR 时可 `--no-glab`
+- [`glab`](https://gitlab.com/gitlab-org/cli)（GitLab；`install.sh` 会尝试通过 brew / apt 安装并检查 `glab auth status`）
+- [`gh`](https://cli.github.com/)（GitHub；`install.sh` 会尝试通过 brew / apt 安装并检查 `gh auth status`）
+- Gitee 暂无通用官方 CLI，PR 需要网页或 Gitee API 创建
+- token 与登录步骤见 [docs/glab-setup.md](docs/glab-setup.md)；对应平台可用 `--no-gitlab` / `--no-github` / `--no-gitee` 跳过
 - 门禁依赖 [`@reneza/skillgate`](https://github.com/renezander030/skillgate)，由 `flow-runner` / `npx` 自动调用
 
 ## 常见问题
