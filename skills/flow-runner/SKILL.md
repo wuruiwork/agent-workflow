@@ -13,7 +13,7 @@ description: >
 ## 职责边界
 
 **只负责：**
-- 根据用户意图选择流程（`~/.claude/flows/<flow>/flow.yaml`）。
+- 根据用户意图选择流程（`<flows>/<flow>/flow.yaml`，解析规则见「流程目录解析」）。
 - 创建 feature 目录和 `current` 符号链接。
 - 把流程的 skillgate 策略安装为项目的 `.skillgate/done.yaml`（或按用户确认切换）。
 - 按 flow.yaml 顺序调度阶段：`type: doc` 读取阶段文档，`type: skill` 调用对应 skill。
@@ -39,9 +39,19 @@ description: >
 - 当前目录是 git 仓库。
 - Node.js ≥18，可用 `npx`。
 - 项目有或允许创建 `.skillgate/done.yaml`。
-- 流程目录存在：`~/.claude/flows/<flow>/flow.yaml`；项目内 `.claude/flows/<flow>/` 优先。
+- 流程目录存在：按「流程目录解析」能找到 `<flow>/flow.yaml`。
 - 可选：项目 `.claude/flows/profile.yaml` 定义 git 动作与阶段绑定；不存在时所有槽位 no-op。
 - `dev-docs` 需要官方 `docx` skill 和 `soffice`；`ppt` 需要 `ppt-master` skill、`soffice`、`pdftoppm`。
+
+## 流程目录解析
+
+按以下顺序查找流程目录，命中即用；下文 `<flows>/<flow>/` 均指这个结果：
+
+1. 项目内 `.claude/flows/<flow>/`（项目覆盖）
+2. `$CLAUDE_CONFIG_DIR/flows/<flow>/`（默认 `~/.claude/flows/<flow>/`）
+3. `$CODEX_HOME/flows/<flow>/`（默认 `~/.codex/flows/<flow>/`）
+
+`install.sh` 会把同一份流程同时装到选中的 agent 目录；项目覆盖仍然是最高优先级。
 
 ## 启动
 
@@ -68,7 +78,7 @@ description: >
    hotfix 同样使用 `docs/specs/current`。产物必须在 git 跟踪范围内，CI 才能校验；不要放进 `.tmp` 或被 `.gitignore` 忽略。
 
 3. **安装策略**
-   - `.skillgate/done.yaml` 不存在：复制 `~/.claude/flows/<flow>/policy.yaml`。
+   - `.skillgate/done.yaml` 不存在：复制 `<flows>/<flow>/policy.yaml`。
    - 已存在且与目标策略不同：先判断是否包含项目自有 gate（文档治理、git 规范等）。有自有 gate 时**合并**流程 gate，保留原有 id 和内容，不要整文件覆盖；没有自有 gate 时才展示差异并询问是否切换。
    - 复制或合并后检查 `tests-pass`：如果还是模板里的 TODO 占位命令，询问用户项目的测试命令并替换；不要保留必然失败的占位。
    - 不得为了让某个门禁通过而删改策略内容。
@@ -86,8 +96,8 @@ description: >
 1. 确定待执行阶段：`cat .skillgate/phase` 得到最近完成的阶段；flow.yaml 中它的下一个 stage 就是当前要做的阶段。没有 marker 时从第一个 stage 开始。
 2. 在 flow.yaml 中找到该 stage。
 3. 执行：
-   - `type: doc`：读取 `~/.claude/flows/<flow>/<ref>`，按文档执行。
-   - `type: skill`：调用 `Skill`，传入 `ref` 对应的 skill 名称。
+   - `type: doc`：读取 `<flows>/<flow>/<ref>`，按文档执行。
+   - `type: skill`：调用 `ref` 对应的 skill（Claude Code 用 `Skill` 工具；Codex 读取并执行该 skill 的 `SKILL.md`）。
    - 调用 `plan-code` 时，要求它把设计文档写到 `docs/specs/current/00-plan.md`；如果它写到 `.tmp`，完成后复制到该路径并确认 `status: implemented`。
 4. 阶段产物完成后：
    - `approval: true` 的阶段必须等用户明确确认，才能改产物状态。
@@ -135,7 +145,7 @@ lite 流程（小型项目/小改动）：
 | verify | doc | `stages/verify.md` | `40-verify.md` | `status: pass` + 测试命令通过 |
 | archive | doc | `stages/archive.md` | `docs/specs/<feature>/` | 归档完成 |
 
-hotfix 流程见 `~/.claude/flows/hotfix/flow.yaml`：reproduce → tasks → implement → verify → archive，阶段数量和 doc-first 不同，复用 `df-implement` 和 `df-verify`。
+hotfix 流程见 `<flows>/hotfix/flow.yaml`：reproduce → tasks → implement → verify → archive，阶段数量和 doc-first 不同，复用 `df-implement` 和 `df-verify`。
 
 dev-docs 流程（Word/PDF 开发文档）：
 

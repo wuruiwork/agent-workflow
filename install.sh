@@ -5,8 +5,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 
-ALL_COMPONENTS="node claude glab skills flows plugins"
+ALL_COMPONENTS="node claude codex glab skills flows plugins"
 COMPONENTS="$ALL_COMPONENTS"
 PLUGINS="document-skills ppt-master"
 DISABLED=""
@@ -24,10 +25,11 @@ usage() {
 
 组件选择:
   --select LIST     只安装指定组件，逗号或空格分隔
-                    node, claude, glab, skills, flows, plugins
+                    node, claude, codex, glab, skills, flows, plugins
   --plugins LIST    只启用指定插件：document-skills, ppt-master
   --no-node         跳过 Node.js 检查/安装
   --no-claude       跳过 Claude Code
+  --no-codex        跳过 Codex CLI
   --no-glab         跳过 glab 安装与登录检查
   --no-plugins      跳过插件市场配置
 
@@ -60,6 +62,7 @@ while [ $# -gt 0 ]; do
     --plugins=*) PLUGINS_GIVEN=1; PLUGINS="${1#*=}" ;;
     --no-node) DISABLED+=" node" ;;
     --no-claude) DISABLED+=" claude" ;;
+    --no-codex) DISABLED+=" codex" ;;
     --no-glab) DISABLED+=" glab" ;;
     --no-plugins) DISABLED+=" plugins" ;;
     -h|--help) usage; exit 0 ;;
@@ -106,10 +109,11 @@ choose_components() {
     case "$c" in
       node) if command -v node >/dev/null 2>&1; then state="已安装 $(node --version)"; else state="未安装"; fi ;;
       claude) if command -v claude >/dev/null 2>&1; then state="已安装"; else state="未安装"; fi ;;
+      codex) if command -v codex >/dev/null 2>&1; then state="已安装 $(codex --version 2>/dev/null | head -1)"; else state="未安装"; fi ;;
       glab) if command -v glab >/dev/null 2>&1; then state="已安装 $(glab --version 2>/dev/null | head -1)"; else state="未安装"; fi ;;
-      skills) state="复制到 $CLAUDE_DIR/skills" ;;
-      flows) state="复制到 $CLAUDE_DIR/flows" ;;
-      plugins) state="$PLUGINS" ;;
+      skills) state="复制到选中的 agent 目录" ;;
+      flows) state="复制到选中的 agent 目录" ;;
+      plugins) state="$PLUGINS（仅 Claude Code）" ;;
     esac
     printf '  %d) %-8s %s\n' "$i" "$c" "$state"
     i=$((i + 1))
@@ -122,10 +126,11 @@ choose_components() {
     case "$n" in
       1) selected+=" node" ;;
       2) selected+=" claude" ;;
-      3) selected+=" glab" ;;
-      4) selected+=" skills" ;;
-      5) selected+=" flows" ;;
-      6) selected+=" plugins" ;;
+      3) selected+=" codex" ;;
+      4) selected+=" glab" ;;
+      5) selected+=" skills" ;;
+      6) selected+=" flows" ;;
+      7) selected+=" plugins" ;;
       *) echo "忽略未知编号: $n" >&2 ;;
     esac
   done
@@ -181,6 +186,7 @@ fi
 say "安装计划"
 echo "仓库:      $REPO_DIR"
 echo "Claude 目录: $CLAUDE_DIR"
+echo "Codex 目录:  $CODEX_HOME"
 echo "组件:      $COMPONENTS"
 if has_component plugins; then
   echo "插件:      $PLUGINS"
@@ -223,6 +229,29 @@ if has_component claude; then
   else
     if confirm_install "是否执行 npm install -g @anthropic-ai/claude-code？"; then
       run npm install -g @anthropic-ai/claude-code
+    fi
+  fi
+fi
+
+# ---- Codex ----
+
+if has_component codex; then
+  say "Codex CLI"
+  if command -v codex >/dev/null 2>&1 && [ "$FORCE" = 0 ]; then
+    echo "已安装：$(codex --version 2>/dev/null | head -1)（--force 可重装）"
+  elif ! command -v npm >/dev/null 2>&1; then
+    echo "未找到 npm，跳过 Codex 安装（先安装 Node.js）" >&2
+  else
+    if confirm_install "是否执行 npm install -g @openai/codex？"; then
+      run npm install -g @openai/codex
+    fi
+  fi
+
+  if command -v codex >/dev/null 2>&1; then
+    if codex login status >/dev/null 2>&1; then
+      echo "codex 已登录"
+    else
+      echo "codex 未登录：使用前请运行 codex login"
     fi
   fi
 fi
@@ -289,14 +318,30 @@ sync_tree() {
   echo "$label -> $dest"
 }
 
+target_dirs() {
+  local kind="$1" dirs=""
+  if has_component claude; then dirs+=" $CLAUDE_DIR/$kind"; fi
+  if has_component codex; then dirs+=" $CODEX_HOME/$kind"; fi
+  if [ -z "$dirs" ]; then
+    if [ -d "$CLAUDE_DIR" ]; then dirs+=" $CLAUDE_DIR/$kind"; fi
+    if [ -d "$CODEX_HOME" ]; then dirs+=" $CODEX_HOME/$kind"; fi
+  fi
+  if [ -z "$dirs" ]; then dirs="$CLAUDE_DIR/$kind"; fi
+  printf '%s' "$dirs"
+}
+
 if has_component skills; then
   say "安装 skills"
-  sync_tree "$REPO_DIR/skills" "$CLAUDE_DIR/skills" "skills"
+  for dest in $(target_dirs skills); do
+    sync_tree "$REPO_DIR/skills" "$dest" "skills"
+  done
 fi
 
 if has_component flows; then
   say "安装流程"
-  sync_tree "$REPO_DIR/flows" "$CLAUDE_DIR/flows" "flows"
+  for dest in $(target_dirs flows); do
+    sync_tree "$REPO_DIR/flows" "$dest" "flows"
+  done
 fi
 
 # ---- 插件 ----
@@ -366,7 +411,7 @@ cat <<EOF
   5. 在该项目里对 Claude 说「走文档先行流程」。
 
 安装位置：
-  skills  $CLAUDE_DIR/skills
-  flows   $CLAUDE_DIR/flows
-  settings $CLAUDE_DIR/settings.json（仅合并插件字段）
+  claude  $CLAUDE_DIR/skills, $CLAUDE_DIR/flows
+  codex   $CODEX_HOME/skills, $CODEX_HOME/flows
+  settings $CLAUDE_DIR/settings.json（仅合并 Claude Code 插件字段）
 EOF

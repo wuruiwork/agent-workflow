@@ -1,6 +1,6 @@
-# ~/.claude/flows
+# flows
 
-流程定义目录。`flow-runner` 从这里读取流程清单和阶段文档。
+流程定义目录。`flow-runner` 按以下顺序查找：项目 `.claude/flows/` → `$CLAUDE_CONFIG_DIR/flows/`（默认 `~/.claude/flows/`）→ `$CODEX_HOME/flows/`（默认 `~/.codex/flows/`）。
 
 ## 已安装的流程
 
