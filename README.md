@@ -123,6 +123,7 @@ actions:
 ./install.sh --link         # 用符号链接代替复制，仓库改动立即生效
 ./install.sh --no-claude    # 跳过 Claude Code
 ./install.sh --no-plugins   # 跳过插件市场配置
+./install.sh --no-glab      # 跳过 glab 安装与登录检查
 CLAUDE_CONFIG_DIR=/custom/dir ./install.sh
 ```
 
@@ -130,7 +131,8 @@ CLAUDE_CONFIG_DIR=/custom/dir ./install.sh
 
 - Node.js ≥ 18（`install.sh` 会尝试通过 brew 或 apt 安装）
 - Claude Code（`install.sh` 会通过 npm 安装）
-- `git`；创建 MR 需要 [`glab`](https://gitlab.com/gitlab-org/cli) 并已登录
+- `git`
+- [`glab`](https://gitlab.com/gitlab-org/cli)（`install.sh` 会尝试通过 brew / apt 安装，并检查登录状态；没有可用的安装源时会打印手动安装命令）。创建 MR 前需要先 `glab auth login`；不用 MR 时可 `--no-glab`
 - 门禁依赖 [`@reneza/skillgate`](https://github.com/renezander030/skillgate)，由 `flow-runner` / `npx` 自动调用
 
 ## 常见问题

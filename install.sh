@@ -11,6 +11,7 @@ FORCE=0
 LINK=0
 INSTALL_CLAUDE=1
 INSTALL_PLUGINS=1
+INSTALL_GLAB=1
 
 usage() {
   cat <<'EOF'
@@ -21,6 +22,7 @@ usage() {
   --link          用符号链接代替复制（仓库改动立即生效）
   --no-claude     跳过 Claude Code 安装
   --no-plugins    跳过插件市场配置
+  --no-glab       跳过 GitLab CLI (glab) 安装与登录检查
   -h, --help      显示帮助
 
 环境变量:
@@ -35,6 +37,7 @@ for arg in "$@"; do
     --link) LINK=1 ;;
     --no-claude) INSTALL_CLAUDE=0 ;;
     --no-plugins) INSTALL_PLUGINS=0 ;;
+    --no-glab) INSTALL_GLAB=0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -79,6 +82,36 @@ if [ "$INSTALL_CLAUDE" = 1 ]; then
     echo "已安装：$(command -v claude)（--force 可重装）"
   else
     run npm install -g @anthropic-ai/claude-code
+  fi
+fi
+
+if [ "$INSTALL_GLAB" = 1 ]; then
+  say "GitLab CLI (glab)"
+  if command -v glab >/dev/null 2>&1; then
+    echo "已安装：$(glab --version 2>/dev/null | head -1)"
+  elif command -v brew >/dev/null 2>&1; then
+    run brew install glab
+  elif command -v apt-get >/dev/null 2>&1 \
+    && LC_ALL=C apt-cache policy glab 2>/dev/null | grep -q 'Candidate: [0-9]'; then
+    run as_root apt-get update -qq
+    run as_root apt-get install -y glab
+  else
+    cat >&2 <<'GLAB'
+未找到 glab，且当前系统没有可用的安装源。请手动安装：
+  macOS:  brew install glab
+  Debian/Ubuntu（官方源）:
+    curl -fsSL https://packages.gitlab.com/install/repositories/gitlab/gitlab-cli/script.deb.sh | sudo bash
+    sudo apt-get install glab
+  其它: https://gitlab.com/gitlab-org/cli
+GLAB
+  fi
+
+  if command -v glab >/dev/null 2>&1; then
+    if glab auth status >/dev/null 2>&1; then
+      echo "glab 已登录"
+    else
+      echo "glab 未登录：创建 MR 前请运行 glab auth login"
+    fi
   fi
 fi
 
@@ -151,12 +184,13 @@ cat <<EOF
 
 下一步：
   1. 首次安装插件后，在 Claude Code 里运行 /reload-skills 或重启会话。
-  2. 打开流程编辑器：
+  2. 创建 MR 前确认 glab 已登录：glab auth status（未登录时运行 glab auth login）。
+  3. 打开流程编辑器：
        ./scripts/open-editor.sh
        ./scripts/open-editor.sh --project /path/to/your/repo
-  3. 给某个项目接入流程：
+  4. 给某个项目接入流程：
        ./scripts/init-project.sh /path/to/your/repo doc-first
-  4. 在该项目里对 Claude 说「走文档先行流程」。
+  5. 在该项目里对 Claude 说「走文档先行流程」。
 
 安装位置：
   skills  $CLAUDE_DIR/skills
