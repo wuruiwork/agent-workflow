@@ -78,6 +78,11 @@ bindings:
   典型用法：fork main → upstream main 在「领先 30 个提交」或「主干安静一周、本轮开发完成」时同步。
 - 跨项目 MR 必须用 `-H` 显式指定 head 项目。
 - 项目可以在 `.claude/flows/profile.local.yaml` 覆盖本机差异（远端名等），该文件不入库。
+- 项目通过 profile 的 `flows` 决定启用哪些流程；不写或留空表示全部可用：
+
+  ```yaml
+  flows: [doc-first, hotfix]
+  ```
 
 ## 产物位置
 

@@ -6,6 +6,10 @@
 
 version: 1
 
+# 本项目启用的流程；不写或留空表示使用所有已安装流程。
+# 不同项目适用的流程不同，按需启用，例如 [doc-first, lite, hotfix]。
+flows: [doc-first]
+
 git:
   provider: gitlab
   push_remote: origin          # 日常推送目标（个人 fork）

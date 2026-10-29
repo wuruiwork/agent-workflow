@@ -154,6 +154,13 @@ function validateFlow(data) {
 
 function validateProfile(data) {
   if (!data || typeof data !== 'object') throw new Error('profile 必须是对象');
+  if (data.flows !== undefined) {
+    if (!Array.isArray(data.flows)) throw new Error('flows 必须是数组');
+    const names = new Set(loadFlows().map((f) => f.name));
+    for (const f of data.flows) {
+      if (!names.has(f)) throw new Error(`flows 里包含未安装的流程: ${f}`);
+    }
+  }
   if (data.actions?.mr?.targets !== undefined && !Array.isArray(data.actions.mr.targets)) {
     throw new Error('actions.mr.targets 必须是数组');
   }

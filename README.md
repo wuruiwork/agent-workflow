@@ -50,6 +50,20 @@ cd agent-workflow
 - 插件（`document-skills`、`ppt-master`）只配置 Claude Code；Codex 使用复制过去的 skills。
 - 登录检查：Claude Code 自动检查 `claude` 可执行文件；Codex 使用 `codex login status`，未登录时提示 `codex login`。
 
+## 项目选择流程
+
+共享仓库提供全部流程，但不同项目适用的流程不同（`ppt`、`dev-docs` 只对特定项目有意义）。
+项目通过 `.claude/flows/profile.yaml` 的 `flows` 决定启用哪些：
+
+```yaml
+flows: [doc-first, lite, hotfix]
+```
+
+- 列表存在：`flow-runner` 只提供这些流程；点名列表外的流程会停止并列出可用项。
+- 不写或留空：使用所有已安装流程。
+- 初始化项目时可以直接指定：`./scripts/init-project.sh <dir> doc-first,lite,hotfix`
+- 编辑器「项目配置」里可以勾选。
+
 ## 流程与 git 动作怎么配合
 
 流程只声明「哪里需要动作」：

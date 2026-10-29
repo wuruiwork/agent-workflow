@@ -361,6 +361,14 @@ function profileHtml() {
   return `
     <div class="profile-form">
       <section>
+        <h3>本项目启用的流程</h3>
+        <div class="checks">
+          ${state.flows.map((f) => `<label><input type="checkbox" data-flow-enabled="${esc(f.name)}" ${(p.flows || []).includes(f.name) ? 'checked' : ''}> ${esc(f.name)}</label>`).join('') || '<span class="hint">仓库里还没有流程</span>'}
+        </div>
+        <p class="hint">共享仓库提供全部流程，这里勾选本项目要用的；一个都不勾 = 使用所有已安装流程。</p>
+      </section>
+
+      <section>
         <h3>远端与分支</h3>
         <div class="grid-2">
           <label>push 远端<input class="input" data-p="git.push_remote" value="${esc(g.push_remote || '')}"></label>
@@ -648,6 +656,15 @@ function onStageEdit(e) {
 
 function onInspectorChange(e) {
   const t = e.target;
+
+  if (t.dataset.flowEnabled) {
+    const enabled = $$('[data-flow-enabled]:checked').map((x) => x.dataset.flowEnabled);
+    if (enabled.length) state.profile.flows = enabled;
+    else delete state.profile.flows;
+    markDirty();
+    refreshYaml();
+    return;
+  }
 
   if (t.dataset.bind) {
     const [stage, hook, action] = t.dataset.bind.split('|');

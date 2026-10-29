@@ -40,7 +40,7 @@ description: >
 - Node.js ≥18，可用 `npx`。
 - 项目有或允许创建 `.skillgate/done.yaml`。
 - 流程目录存在：按「流程目录解析」能找到 `<flow>/flow.yaml`。
-- 可选：项目 `.claude/flows/profile.yaml` 定义 git 动作与阶段绑定；不存在时所有槽位 no-op。
+- 可选：项目 `.claude/flows/profile.yaml` 定义启用的流程（`flows`）、git 动作与阶段绑定；不存在时所有槽位 no-op。
 - `dev-docs` 需要官方 `docx` skill 和 `soffice`；`ppt` 需要 `ppt-master` skill、`soffice`、`pdftoppm`。
 
 ## 流程目录解析
@@ -53,10 +53,24 @@ description: >
 
 `install.sh` 会把同一份流程同时装到选中的 agent 目录；项目覆盖仍然是最高优先级。
 
+## 项目启用的流程
+
+不同项目适用的流程不同（例如 `ppt`、`dev-docs` 只对特定项目有意义），由项目自己决定启用哪些：
+
+```yaml
+# <project>/.claude/flows/profile.yaml
+flows: [doc-first, hotfix]
+```
+
+- 列表存在：只能选择列表内的流程；用户点名列表外的流程时停止，列出已启用流程，不自动启用。
+- 列表不存在或为空：可选用所有已安装流程（向后兼容）。
+- 列表里的流程找不到对应目录：报告缺失，不自动安装；由用户决定是否更新 agent-workflow。
+
 ## 启动
 
 1. **选流程**
-   - `$ARGUMENTS` 以流程名开头时直接用该流程。
+   - 先读取项目 `.claude/flows/profile.yaml` 的 `flows`，把可选流程限制在启用列表内（规则见「项目启用的流程」）。
+   - `$ARGUMENTS` 以流程名开头时直接用该流程；不在启用列表内则停止并列出可用流程。
    - 否则根据请求判断：
      - 单模块、预计 ≤3 个文件、不需要独立的 brief/design/tasks → `lite`（plan-code 负责设计 + 实现）。
      - 跨模块、需要分阶段确认 → `doc-first`。
