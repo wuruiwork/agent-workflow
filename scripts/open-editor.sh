@@ -3,7 +3,9 @@
 # 用法:
 #   ./scripts/open-editor.sh
 #   ./scripts/open-editor.sh --project /path/to/repo
+#   ./scripts/open-editor.sh --project "/path/with spaces/repo"
 #   ./scripts/open-editor.sh --port 5000
+# 路径含空格时建议加引号；不加引号也会自动合并识别。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

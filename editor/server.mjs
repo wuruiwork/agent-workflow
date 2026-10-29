@@ -33,13 +33,18 @@ if (args.help) {
   console.log(`用法: node editor/server.mjs [选项]
 
   --project <dir>  同时编辑该项目的 .claude/flows/profile.yaml
+                   路径含空格时可以不加引号（会合并到下一个 --flag 之前）；支持 ~
   --port <n>       监听端口，默认 4173，占用时自动顺延
   --no-open        不自动打开浏览器
   --help           显示帮助`);
   process.exit(0);
 }
 
-let projectRoot = args.project ? path.resolve(args.project) : null;
+function expandHome(p) {
+  return String(p || '').replace(/^~(?=$|\/)/, process.env.HOME || '~');
+}
+
+let projectRoot = args.project ? path.resolve(expandHome(args.project)) : null;
 if (projectRoot && !fs.existsSync(projectRoot)) {
   console.error(`项目路径不存在: ${projectRoot}`);
   process.exit(1);
@@ -51,8 +56,16 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--help' || a === '-h') out.help = true;
     else if (a === '--no-open') out.open = false;
-    else if (a === '--project') out.project = argv[++i];
-    else if (a === '--port') out.port = Number(argv[++i]);
+    else if (a === '--project') {
+      // 路径含空格且没加引号时，会被 shell 拆成多个参数；合并到下一个 --flag 之前。
+      const parts = [];
+      while (i + 1 < argv.length && !argv[i + 1].startsWith('--')) parts.push(argv[++i]);
+      if (!parts.length) {
+        console.error('--project 需要一个目录参数');
+        process.exit(2);
+      }
+      out.project = parts.join(' ');
+    } else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--project=')) out.project = a.slice(10);
     else if (a.startsWith('--port=')) out.port = Number(a.slice(7));
     else { console.error(`未知参数: ${a}`); process.exit(2); }
@@ -187,7 +200,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/project' && req.method === 'POST') {
     const { path: target } = await readBody(req);
     if (!target) throw new Error('缺少项目路径');
-    const resolved = path.resolve(String(target).replace(/^~(?=$|\/)/, process.env.HOME || '~'));
+    const resolved = path.resolve(expandHome(target));
     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
       throw new Error(`目录不存在: ${resolved}`);
     }

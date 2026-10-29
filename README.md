@@ -114,6 +114,8 @@ actions:
 ./scripts/open-editor.sh --port 5000 --no-open        # 指定端口、不自动开浏览器
 ```
 
+路径含空格时建议加引号（`--project "/path/with spaces/repo"`）；不加引号也会自动合并识别，并支持 `~`。
+
 功能：
 
 - 阶段增删、拖动排序；编辑 `type` / `ref` / 产物 / 状态 gate / 人工确认。

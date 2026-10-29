@@ -3,6 +3,7 @@
 # 用法:
 #   ./scripts/init-project.sh /path/to/repo [flow]
 #   ./scripts/init-project.sh . lite --force
+#   ./scripts/init-project.sh /path/with spaces/repo doc-first   # 未加引号也能识别
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,7 +21,13 @@ for arg in "$@"; do
 done
 
 PROJECT="${ARGS[0]:-$(pwd)}"
-FLOW="${ARGS[1]:-doc-first}"
+IDX=1
+# 路径含空格且没加引号时，会被 shell 拆成多个参数；合并到目录存在为止。
+while [ ! -d "$PROJECT" ] && [ "$IDX" -lt "${#ARGS[@]}" ]; do
+  PROJECT="$PROJECT ${ARGS[$IDX]}"
+  IDX=$((IDX + 1))
+done
+FLOW="${ARGS[$IDX]:-doc-first}"
 
 if [ ! -d "$PROJECT" ]; then
   echo "目录不存在: $PROJECT" >&2
