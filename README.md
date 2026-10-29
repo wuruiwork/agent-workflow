@@ -130,12 +130,17 @@ actions:
 
 功能：
 
-- 阶段增删、拖动排序；编辑 `type` / `ref` / 产物 / 状态 gate / 人工确认。
+- 阶段增删、拖动排序；编辑 `type` / 产物 / 状态 gate / 人工确认。
+- `type: skill` 的 `ref` 直接从仓库已有 skill 下拉选择；新增 skill 后立即出现在选项里。
 - 为每个阶段勾选 hook（`stage_end` / `finish`）。
 - 「阶段动作」矩阵：按 阶段 × hook 勾选 `commit` / `push` / `mr`，直接写入 profile 的 `bindings`。
 - 每个阶段的 commit 类型。
-- 「项目配置」：远端、分支正则、commit 类型、禁止提交路径、MR 目标（`always` / 领先提交数 / 空闲天数）。
-- 「YAML」：实时预览 `flow.yaml`、`profile.yaml`，可下载，也可根据阶段生成 `policy.yaml` 并保存。
+- 「项目配置」：启用流程、远端、分支正则、commit 类型、禁止提交路径、MR 目标（`always` / 领先提交数 / 空闲天数）。
+- 「Skills」：新建、导入文件夹、编辑、删除 skill；导入时会保留目录里的 `references/`、`scripts/` 等文件。
+- 「YAML 预览」：实时预览 `flow.yaml`、`profile.yaml`、生成的 `policy.yaml`；`tests-pass` 命令直接在表单里填，不需要手改 YAML。
+- 地址栏加 `#flow=doc-first` 可以直接定位到某个流程。
+
+新建或导入 skill 后，运行 `./install.sh --agents claude,codex --yes` 同步到 agent 目录。
 
 保存规则：
 

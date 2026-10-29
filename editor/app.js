@@ -19,6 +19,8 @@ const state = {
   profile: null,
   profilePath: '',
   profileTarget: 'example',
+  skills: [],
+  policyTests: '',
   tab: 'bindings',
   dirty: false,
 };
@@ -130,7 +132,11 @@ async function init() {
   try {
     const s = await api('/api/state');
     applyState(s);
-    if (state.flows.length) selectFlow(state.flows[0].name);
+    if (state.flows.length) {
+      const wanted = new URLSearchParams(location.hash.slice(1)).get('flow');
+      const initial = state.flows.some((f) => f.name === wanted) ? wanted : state.flows[0].name;
+      selectFlow(initial);
+    }
     renderAll();
     bindEvents();
     window.addEventListener('beforeunload', (e) => {
@@ -145,6 +151,7 @@ function applyState(s) {
   state.repo = s.repo || '';
   state.project = s.project || null;
   state.flows = s.flows || [];
+  state.skills = s.skills || [];
   state.profileTarget = s.profileTarget || 'example';
   state.profilePath = s.profile?.path || '';
   state.profile = s.profile?.data ? clone(s.profile.data) : defaultProfile();
@@ -155,6 +162,8 @@ function selectFlow(name) {
   if (!item) return;
   state.flowName = name;
   state.flow = item.data ? clone(item.data) : null;
+  const testsGate = item.policy?.gates?.find((g) => g.id === 'tests-pass');
+  state.policyTests = testsGate?.run || '';
 }
 
 /* ---------------- 渲染 ---------------- */
@@ -209,8 +218,23 @@ function renderStages() {
   $('#stages').innerHTML = (state.flow?.stages || []).map(stageCard).join('');
 }
 
+function skillOptions(current) {
+  const names = state.skills.map((k) => k.name);
+  const options = names
+    .map((n) => `<option value="${esc(n)}" ${n === current ? 'selected' : ''}>${esc(n)}</option>`)
+    .join('');
+  if (current && !names.includes(current)) {
+    return `<option value="${esc(current)}" selected>${esc(current)}（未在仓库中）</option>${options}`;
+  }
+  if (!current) return `<option value="" selected>（选择 skill）</option>${options}`;
+  return options || `<option value="${esc(current)}" selected>${esc(current)}</option>`;
+}
+
 function stageCard(s, i) {
   const hooks = state.flow.checkpoints || [];
+  const refField = s.type === 'skill'
+    ? `<select data-field="ref">${skillOptions(s.ref)}</select>`
+    : `<input class="input" data-field="ref" value="${esc(s.ref || '')}">`;
   return `
     <div class="stage-card" draggable="true" data-index="${i}">
       <div class="stage-head">
@@ -222,7 +246,7 @@ function stageCard(s, i) {
           ${['doc', 'skill'].map((t) => `<option ${s.type === t ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
       </label>
-      <label>ref<input class="input" data-field="ref" value="${esc(s.ref || '')}"></label>
+      <label>ref${refField}</label>
       <label>产物<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
       <label>状态 gate<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
       <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> 人工确认</label>
@@ -245,6 +269,7 @@ function bindingChips(stageId) {
 function renderInspector() {
   $('#tab-bindings').innerHTML = bindingsHtml();
   $('#tab-profile').innerHTML = profileHtml();
+  $('#tab-skills').innerHTML = skillsHtml();
   $('#tab-yaml').innerHTML = yamlHtml();
   updateTabs();
 }
@@ -413,6 +438,121 @@ function profileHtml() {
     </div>`;
 }
 
+/* ---------------- Skills ---------------- */
+
+function skillsHtml() {
+  const rows = state.skills.map((s) => `
+    <div class="skill-row">
+      <div class="skill-main">
+        <strong>${esc(s.name)}</strong>
+        <span class="hint">${esc(s.description || '（无描述）')}</span>
+      </div>
+      <div class="skill-actions">
+        <button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">编辑</button>
+        <button class="btn danger" data-skill-action="delete" data-skill="${esc(s.name)}">删除</button>
+      </div>
+    </div>`).join('');
+  return `
+    <div class="yaml-actions">
+      <button class="btn primary" data-skill-action="new">＋ 新建 skill</button>
+      <button class="btn" data-skill-action="import">导入文件夹</button>
+    </div>
+    <p class="hint">保存后运行 <code>./install.sh --agents claude,codex --yes</code> 才会同步到 agent 目录；流程阶段 type=skill 的 ref 会直接出现在下拉框。</p>
+    <div class="skill-list">${rows || '<p class="hint">还没有 skill</p>'}</div>`;
+}
+
+function openSkillModal(skill, isNew) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>${isNew ? '新建 skill' : `编辑 ${esc(skill.name)}`}</h3>
+      <label>名称（小写字母、数字、连字符）
+        <input class="input" id="skill-name" value="${esc(skill.name || '')}" ${isNew ? '' : 'disabled'}>
+      </label>
+      <label>描述（告诉 agent 何时使用）
+        <textarea id="skill-desc" rows="3">${esc(skill.description || '')}</textarea>
+      </label>
+      <label>SKILL.md 正文（Markdown）
+        <textarea id="skill-body" rows="16" spellcheck="false">${esc(skill.body || '')}</textarea>
+      </label>
+      <div class="modal-actions">
+        <span class="hint" id="modal-error"></span>
+        <button class="btn" data-modal="cancel">取消</button>
+        <button class="btn primary" data-modal="save">保存</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', async (e) => {
+    if (e.target === overlay || e.target.dataset.modal === 'cancel') {
+      overlay.remove();
+      return;
+    }
+    if (e.target.dataset.modal !== 'save') return;
+    const name = $('#skill-name', overlay).value.trim();
+    const description = $('#skill-desc', overlay).value.trim();
+    const body = $('#skill-body', overlay).value;
+    try {
+      await api('/api/skill', { method: 'POST', body: { name, description, body } });
+      overlay.remove();
+      await reloadSkills();
+      setStatus(`skill 已保存: ${name}`, 'ok');
+    } catch (err) {
+      $('#modal-error', overlay).textContent = err.message;
+    }
+  });
+}
+
+async function reloadSkills() {
+  const r = await api('/api/skills');
+  state.skills = r.skills || [];
+  renderStages();
+  renderInspector();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function importSkillFolder() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.webkitdirectory = true;
+  input.multiple = true;
+  input.addEventListener('change', async () => {
+    const files = [...input.files];
+    if (!files.length) return;
+    const folder = files[0].webkitRelativePath.split('/')[0];
+    const suggested = folder.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+    const name = prompt('skill 名称（小写字母、数字、连字符）', suggested);
+    if (!name) return;
+    const payload = [];
+    for (const f of files) {
+      const rel = f.webkitRelativePath.split('/').slice(1).join('/');
+      if (!rel) continue;
+      const isText = /\.(md|txt|ya?ml|json|sh|py|js|mjs|cjs|css|html)$/i.test(rel);
+      payload.push({
+        path: rel,
+        content: isText ? await f.text() : await fileToBase64(f),
+        encoding: isText ? 'text' : 'base64',
+      });
+    }
+    try {
+      await api('/api/skill/import', { method: 'POST', body: { name, files: payload } });
+      await reloadSkills();
+      setStatus(`已导入 skill: ${name}`, 'ok');
+    } catch (err) {
+      setStatus(err.message, 'err');
+    }
+  });
+  input.click();
+}
+
 /* ---------------- YAML ---------------- */
 
 function flowYamlText() {
@@ -426,7 +566,7 @@ function profileYamlText() {
 
 
 function policyText() {
-  const p = generatePolicy(state.flow);
+  const p = generatePolicy(state.flow, { testsCommand: state.policyTests });
   if (!p) return '';
   try { return jsyaml.dump(p, DUMP_OPTS); } catch (err) { return String(err); }
 }
@@ -439,6 +579,9 @@ function yamlHtml() {
       <button class="btn" data-action="download-policy">下载 policy.yaml</button>
       <button class="btn primary" data-action="save-policy">保存 policy</button>
     </div>
+    <label>tests-pass 命令（留空使用模板占位；只有含 verify 阶段的流程会用到）
+      <textarea id="policy-tests" rows="3" placeholder="例如：uv run pytest -q tests/env">${esc(state.policyTests)}</textarea>
+    </label>
     <h3>flow.yaml</h3>
     <pre class="yaml" id="yaml-flow">${esc(flowYamlText())}</pre>
     <h3>profile.yaml</h3>
@@ -640,6 +783,7 @@ function onStageEdit(e) {
       stage[field] = value;
     }
     markDirty();
+    if (field === 'type') renderStages();
     renderInspector();
     return;
   }
@@ -656,6 +800,13 @@ function onStageEdit(e) {
 
 function onInspectorChange(e) {
   const t = e.target;
+
+  if (t.id === 'policy-tests') {
+    state.policyTests = t.value;
+    markDirty();
+    refreshYaml();
+    return;
+  }
 
   if (t.dataset.flowEnabled) {
     const enabled = $$('[data-flow-enabled]:checked').map((x) => x.dataset.flowEnabled);
@@ -729,6 +880,30 @@ function onInspectorChange(e) {
 }
 
 async function onInspectorClick(e) {
+  const skillAction = e.target.closest('[data-skill-action]')?.dataset.skillAction;
+  if (skillAction) {
+    if (skillAction === 'new') { openSkillModal({}, true); return; }
+    if (skillAction === 'import') { importSkillFolder(); return; }
+    const name = e.target.closest('[data-skill]')?.dataset.skill;
+    if (!name) return;
+    if (skillAction === 'edit') {
+      try {
+        const skill = await api(`/api/skill?name=${encodeURIComponent(name)}`);
+        openSkillModal(skill, false);
+      } catch (err) { setStatus(err.message, 'err'); }
+      return;
+    }
+    if (skillAction === 'delete') {
+      if (!confirm(`删除 skill ${name}？`)) return;
+      try {
+        await api('/api/skill', { method: 'DELETE', body: { name } });
+        await reloadSkills();
+        setStatus(`已删除 ${name}`, 'ok');
+      } catch (err) { setStatus(err.message, 'err'); }
+    }
+    return;
+  }
+
   const action = e.target.closest('[data-action]')?.dataset.action;
   if (!action) return;
 
@@ -758,7 +933,7 @@ async function onInspectorClick(e) {
   if (action === 'save-policy') {
     if (!state.flow) return;
     try {
-      await api('/api/policy', { method: 'POST', body: { flow: state.flow.name, data: generatePolicy(state.flow) } });
+      await api('/api/policy', { method: 'POST', body: { flow: state.flow.name, data: generatePolicy(state.flow, { testsCommand: state.policyTests }) } });
       setStatus('policy 已保存', 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   }

@@ -16,6 +16,7 @@ const yaml = require('./vendor/js-yaml.umd.min.cjs');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const FLOWS_DIR = path.join(REPO_ROOT, 'flows');
+const SKILLS_DIR = path.join(REPO_ROOT, 'skills');
 const EXAMPLE_PROFILE = path.join(REPO_ROOT, 'examples', 'profile.yaml');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -79,10 +80,52 @@ const isInside = (child, parent) => {
 };
 
 const flowNameRe = /^[a-z0-9][a-z0-9-]*$/;
+const skillNameRe = /^[a-z0-9][a-z0-9-]*$/;
 
 function flowPath(name) {
   if (!flowNameRe.test(name)) throw new Error(`非法流程名: ${name}`);
   return path.join(FLOWS_DIR, name, 'flow.yaml');
+}
+
+function skillDir(name) {
+  if (!skillNameRe.test(name || '')) throw new Error(`非法 skill 名: ${name}`);
+  return path.join(SKILLS_DIR, name);
+}
+
+function readSkill(name) {
+  if (!skillNameRe.test(name || '')) return null;
+  const file = path.join(SKILLS_DIR, name, 'SKILL.md');
+  if (!fs.existsSync(file)) return null;
+  const text = fs.readFileSync(file, 'utf8');
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  let meta = {};
+  if (match) {
+    try { meta = yaml.load(match[1]) || {}; } catch { meta = {}; }
+  }
+  return {
+    name,
+    description: String(meta.description || '').trim(),
+    body: match ? text.slice(match[0].length) : text,
+  };
+}
+
+function dumpSkill(name, description, body) {
+  const meta = yaml.dump(
+    { name, description: String(description || '').trim() },
+    { noRefs: true, lineWidth: -1, sortKeys: false }
+  );
+  return `---\n${meta}---\n\n${String(body || '').trim()}\n`;
+}
+
+function loadSkills() {
+  if (!fs.existsSync(SKILLS_DIR)) return [];
+  return fs.readdirSync(SKILLS_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && skillNameRe.test(d.name))
+    .map((d) => {
+      const info = readSkill(d.name);
+      return { name: d.name, description: info?.description || '' };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function profilePath() {
@@ -114,7 +157,12 @@ function loadFlows() {
       const file = path.join(FLOWS_DIR, d.name, 'flow.yaml');
       if (!fs.existsSync(file)) return null;
       try {
-        return { name: d.name, path: file, data: readYaml(file), error: null };
+        const policyFile = path.join(FLOWS_DIR, d.name, 'policy.yaml');
+        let policy = null;
+        if (fs.existsSync(policyFile)) {
+          try { policy = readYaml(policyFile); } catch { policy = null; }
+        }
+        return { name: d.name, path: file, data: readYaml(file), policy, error: null };
       } catch (err) {
         return { name: d.name, path: file, data: null, error: err.message };
       }
@@ -199,6 +247,7 @@ async function handleApi(req, res, url) {
       repo: REPO_ROOT,
       project: projectRoot,
       flows: loadFlows(),
+      skills: loadSkills(),
       profile: loadProfile(),
       profileTarget: projectRoot ? 'project' : 'example',
     });
@@ -268,6 +317,57 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === '/api/profile/raw' && req.method === 'GET') {
     return sendJson(res, 200, { path: profilePath(), text: fs.existsSync(profilePath()) ? fs.readFileSync(profilePath(), 'utf8') : '' });
+  }
+
+  if (url.pathname === '/api/skills' && req.method === 'GET') {
+    return sendJson(res, 200, { skills: loadSkills() });
+  }
+
+  if (url.pathname === '/api/skill' && req.method === 'GET') {
+    const skill = readSkill(url.searchParams.get('name') || '');
+    if (!skill) throw new Error(`skill 不存在: ${url.searchParams.get('name')}`);
+    return sendJson(res, 200, skill);
+  }
+
+  if (url.pathname === '/api/skill' && req.method === 'POST') {
+    const { name, description, body } = await readBody(req);
+    if (!skillNameRe.test(name || '')) throw new Error('skill 名只能包含小写字母、数字和连字符');
+    const dir = skillDir(name);
+    await fsp.mkdir(dir, { recursive: true });
+    await fsp.writeFile(path.join(dir, 'SKILL.md'), dumpSkill(name, description, body));
+    return sendJson(res, 200, { ok: true, name });
+  }
+
+  if (url.pathname === '/api/skill' && req.method === 'DELETE') {
+    const { name } = await readBody(req);
+    const dir = skillDir(name);
+    if (!fs.existsSync(dir)) throw new Error(`skill 不存在: ${name}`);
+    await fsp.rm(dir, { recursive: true, force: true });
+    return sendJson(res, 200, { ok: true, name });
+  }
+
+  if (url.pathname === '/api/skill/import' && req.method === 'POST') {
+    const { name, files } = await readBody(req);
+    if (!skillNameRe.test(name || '')) throw new Error('skill 名只能包含小写字母、数字和连字符');
+    if (!Array.isArray(files) || files.length === 0) throw new Error('没有可导入的文件');
+    const dir = skillDir(name);
+    const normalized = files.map((f) => {
+      const rel = String(f.path || '').replace(/\\/g, '/');
+      if (!rel || rel.startsWith('/') || rel.split('/').includes('..')) throw new Error(`非法路径: ${rel}`);
+      const dest = path.resolve(dir, rel);
+      if (!isInside(dest, dir)) throw new Error(`非法路径: ${rel}`);
+      return { rel, dest, content: f.content, encoding: f.encoding };
+    });
+    if (!normalized.some((f) => f.rel === 'SKILL.md')) throw new Error('导入内容必须包含 SKILL.md');
+    await fsp.rm(dir, { recursive: true, force: true });
+    for (const f of normalized) {
+      await fsp.mkdir(path.dirname(f.dest), { recursive: true });
+      const data = f.encoding === 'base64'
+        ? Buffer.from(String(f.content || ''), 'base64')
+        : String(f.content ?? '');
+      await fsp.writeFile(f.dest, data);
+    }
+    return sendJson(res, 200, { ok: true, name });
   }
 
   sendJson(res, 404, { error: 'unknown api' });

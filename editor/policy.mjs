@@ -1,7 +1,7 @@
 // 根据 flow.yaml 生成 skillgate 策略骨架。
 // 浏览器和 Node 共用；生成的 policy 只覆盖流程阶段，测试命令仍需人工替换。
 
-export function generatePolicy(flow) {
+export function generatePolicy(flow, options = {}) {
   if (!flow) return null;
   const dir = String(flow.artifacts || '').replace(/\/current\/?$/, '');
   if (!flow.artifacts) {
@@ -40,7 +40,7 @@ export function generatePolicy(flow) {
       id: 'tests-pass',
       type: 'command',
       timeout: 540000,
-      run: `sh -c 'echo "TODO: 换成项目测试命令"; exit 1'`,
+      run: options.testsCommand || `sh -c 'echo "TODO: 换成项目测试命令"; exit 1'`,
       when: { changed: [`${dir}/*/${verify.artifact || '40-verify.md'}`] },
     });
     phaseRequires[verify.id].push('tests-pass');

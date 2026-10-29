@@ -168,6 +168,33 @@ pre.yaml {
 }
 pre.yaml.error { border-color: var(--danger); color: var(--danger); }
 
+#tab-yaml label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+#tab-yaml textarea { font-family: var(--mono); }
+
+.skill-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.skill-row {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--panel-2);
+}
+.skill-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.skill-main .hint { margin: 0; }
+.skill-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .55);
+  display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; width: min(760px, 100%); max-height: 90vh; overflow: auto;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.modal h3 { margin: 0; }
+.modal label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.modal textarea { font-family: var(--mono); }
+.modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.modal-actions .hint { margin-right: auto; color: var(--danger); }
+
 @media (max-width: 1200px) {
   .layout { grid-template-columns: 200px minmax(0, 1fr); }
   .inspector { grid-column: span 2; position: static; max-height: none; }
