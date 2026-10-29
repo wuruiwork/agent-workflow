@@ -4,6 +4,7 @@
 只用 `commit` / `push` 的项目不需要 glab；profile 里配置了 `mr.targets` 才需要。
 
 `./install.sh` 会尝试自动安装 glab 并检查登录状态；本文是手动安装、登录和排错的完整说明。
+token 准备部分覆盖 **Gitee / GitLab / GitHub** 三个平台；安装与登录部分以 glab（GitLab）为主。
 
 ## 1. 安装
 
@@ -48,14 +49,60 @@ glab --version
 
 ## 2. 准备访问令牌
 
-1. 打开 GitLab，右上角头像 → **Edit profile** → **Access Tokens**（不同版本可能叫 **Preferences → Access Tokens**）。
+按代码托管平台选择对应步骤。`glab` 只消费 GitLab token；GitHub / Gitee 的 token 供 `gh`、
+Gitee API 或 CI 使用——当前 `git-action` 的 `mr` 动作只支持 GitLab。
+
+| 平台 | 使用的工具 | token 名称 | 最低权限 |
+|---|---|---|---|
+| GitLab | `glab` | Personal Access Token | `api` |
+| GitHub | `gh` 或 GitHub API | Personal access token（classic / fine-grained） | `repo`，或 Contents + Pull requests 读写 |
+| Gitee | Gitee API / CI | 私人令牌（Personal Access Token） | `projects`、`pull_requests`、`issues` |
+
+> token 等同于密码：不要提交到仓库、不要贴进 issue/聊天记录。优先用环境变量或
+> 平台的 secret 注入。
+
+### 2.1 GitLab
+
+1. 右上角头像 → **Edit profile** → **Access Tokens**（部分版本叫 **Preferences → Access Tokens**）。
 2. Name 填 `glab-cli`，Expiration 按团队策略设置。
-3. Scopes 至少勾选 **`api`**。
-   - `read_api` 只能读，不能创建 MR。
+3. Scopes 至少勾选 **`api`**；`read_api` 只能读，不能创建 MR。
 4. 创建后复制 `glpat-...` 开头的 token。页面关闭后无法再次查看。
 
-> token 等同于密码：不要提交到仓库、不要贴进 issue/聊天记录。`glab` 默认保存在
-> `~/.config/glab-cli/config.yml`；需要系统钥匙串时加 `--use-keyring`。
+`glab` 默认把 token 存在 `~/.config/glab-cli/config.yml`；需要系统钥匙串时加 `--use-keyring`。
+
+### 2.2 GitHub
+
+1. 右上角头像 → **Settings** → **Developer settings** → **Personal access tokens**。
+2. 两种 token 任选：
+   - **Fine-grained**（推荐）：Repository access 选择目标仓库 →
+     Permissions 至少给 **Contents: Read and write**、**Pull requests: Read and write**
+     （Metadata 会自动只读）。
+   - **Classic**：Scopes 至少勾 **`repo`**；访问组织仓库时再勾 **`read:org`**；
+     需要修改 workflow 时勾 **`workflow`**。
+3. 生成后复制 `github_pat_...` 或 `ghp_...` 开头的 token。
+4. 安装 `gh`（GitHub CLI）：macOS `brew install gh`；Debian/Ubuntu
+   `sudo apt install gh`；Windows `winget install GitHub.cli`。
+5. 登录 `gh`：
+
+   ```bash
+   gh auth login --with-token < ~/.config/github-token.txt
+   gh auth status
+   ```
+
+   也可以在 CI / 当前 shell 里使用 `GH_TOKEN` 或 `GITHUB_TOKEN` 环境变量，
+   它们的优先级高于 `gh` 保存的凭据。
+
+### 2.3 Gitee
+
+1. 右上角头像 → **设置** → **安全设置** → **私人令牌** → **生成新令牌**。
+2. 勾选权限：**`projects`**（仓库读写）、**`pull_requests`**（Pull Request）、
+   **`issues`**（Issue，可选）、**`notes`**（评论，可选）。
+3. 生成后立即复制 token，页面关闭后无法再次查看。
+4. 使用方式：
+   - HTTPS 拉取/推送时，用户名填 Gitee 账号，密码填 token。
+   - CI 中通过平台 secret 注入 `GITEE_TOKEN`，不要写进仓库。
+   - 创建 Pull Request 目前用 Gitee 网页或 API；Gitee 暂无像 `glab` / `gh` 那样
+     稳定通用的官方 CLI，`git-action` 也不会自动创建 Gitee PR。
 
 ## 3. 登录
 
@@ -179,3 +226,6 @@ glab mr create -R <target> [-H <head_project>] -s <head> -b <base> -t <title> -d
 ```
 
 `install.sh` 会检查 glab 是否安装、是否登录；`glab auth login` 需要交互输入，脚本不会代填。
+
+GitHub / Gitee 目前没有接入 `git-action` 的自动 MR：需要时扩展 `actions.mr.tool`，
+或先用对应平台的手工流程创建 PR，再让 flow 继续推进。

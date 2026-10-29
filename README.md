@@ -35,7 +35,7 @@ cd agent-workflow
 | `examples/profile.yaml` | 项目级 git 动作档案示例 |
 | `scripts/init-project.sh` | 把 profile、skillgate 策略和 `.gitignore` 条目写入目标项目 |
 | `scripts/open-editor.sh` | 启动编辑器并自动打开浏览器 |
-| `docs/glab-setup.md` | glab 安装、token 与 `glab auth login` 完整说明 |
+| `docs/glab-setup.md` | Gitee / GitLab / GitHub token、glab 安装与 `glab auth login` 完整说明 |
 
 ## 流程与 git 动作怎么配合
 
