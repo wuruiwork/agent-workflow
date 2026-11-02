@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>流程编辑器 · agent-workflow</title>
+  <title>Workflow editor · agent-workflow</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -11,52 +11,56 @@
     <div class="brand">
       <span class="dot"></span>
       <strong>agent-workflow</strong>
-      <span class="muted">流程编辑器</span>
+      <span class="muted" data-i18n="brand.sub">Workflow editor</span>
     </div>
     <div class="env" id="env"></div>
     <div class="topbar-actions">
+      <select id="lang-select" class="input lang-select" aria-label="Language">
+        <option value="en">English</option>
+        <option value="zh">中文</option>
+      </select>
       <span id="status" class="status"></span>
-      <button id="btn-save-flow" class="btn primary">保存流程</button>
-      <button id="btn-save-profile" class="btn">保存 profile</button>
+      <button id="btn-save-flow" class="btn primary" data-i18n="btn.saveFlow">Save flow</button>
+      <button id="btn-save-profile" class="btn" data-i18n="btn.saveProfile">Save profile</button>
     </div>
   </header>
 
   <main class="layout">
     <aside class="sidebar">
-      <div class="panel-title">流程</div>
+      <div class="panel-title" data-i18n="side.flows">Flows</div>
       <div id="flow-list" class="flow-list"></div>
-      <button id="btn-new-flow" class="btn ghost wide">＋ 新建流程</button>
+      <button id="btn-new-flow" class="btn ghost wide" data-i18n="side.newFlow">＋ New flow</button>
 
-      <div class="panel-title">工作区（缓存）</div>
+      <div class="panel-title" data-i18n="side.workspace">Workspace (cache)</div>
       <select id="workspace-select" class="input"></select>
-      <button id="btn-new-workspace" class="btn ghost wide">＋ 新建工作区</button>
-      <p class="hint">所有编辑写入工作区，发布仓库保持只读；工作区在仓库内且已加入 <code>.gitignore</code>。</p>
+      <button id="btn-new-workspace" class="btn ghost wide" data-i18n="side.newWorkspace">＋ New workspace</button>
+      <p class="hint" data-i18n-html="side.workspaceHint"></p>
 
-      <div class="panel-title">当前项目</div>
+      <div class="panel-title" data-i18n="side.project">Current project</div>
       <div id="project-info" class="project-info"></div>
       <div class="row">
         <input id="project-input" class="input" placeholder="/path/to/project">
-        <button id="btn-connect" class="btn">连接</button>
+        <button id="btn-connect" class="btn" data-i18n="side.connect">Connect</button>
       </div>
-      <p class="hint">连接后，「保存 profile」写入该项目的 <code>.claude/flows/profile.yaml</code>；未连接时写入本仓库的 <code>examples/profile.yaml</code>。</p>
+      <p class="hint" data-i18n-html="side.projectHint"></p>
     </aside>
 
     <section class="canvas">
       <div id="flow-meta" class="flow-meta"></div>
       <div id="stages" class="stages"></div>
       <div class="canvas-actions">
-        <button id="btn-add-stage" class="btn ghost">＋ 添加阶段</button>
-        <span class="hint">拖动卡片调整顺序</span>
+        <button id="btn-add-stage" class="btn ghost" data-i18n="canvas.addStage">＋ Add stage</button>
+        <span class="hint" data-i18n="canvas.dragHint">Drag cards to reorder</span>
       </div>
     </section>
 
     <aside class="inspector">
       <div class="tabs">
-        <button class="tab active" data-tab="bindings">阶段动作</button>
-        <button class="tab" data-tab="profile">项目配置</button>
-        <button class="tab" data-tab="skills">Skills</button>
-        <button class="tab" data-tab="help">字段说明</button>
-        <button class="tab" data-tab="yaml">高级</button>
+        <button class="tab active" data-tab="bindings" data-i18n="tab.bindings">Stage actions</button>
+        <button class="tab" data-tab="profile" data-i18n="tab.profile">Project config</button>
+        <button class="tab" data-tab="skills" data-i18n="tab.skills">Skills</button>
+        <button class="tab" data-tab="help" data-i18n="tab.help">Field help</button>
+        <button class="tab" data-tab="yaml" data-i18n="tab.advanced">Advanced</button>
       </div>
       <div class="tab-panel active" id="tab-bindings"></div>
       <div class="tab-panel" id="tab-profile"></div>
