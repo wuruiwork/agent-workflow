@@ -257,7 +257,14 @@ function loadFlows() {
 
 function loadProfile() {
   const file = profilePath();
-  if (!fs.existsSync(file)) return { path: file, exists: false, data: null };
+  if (!fs.existsSync(file)) {
+    // 工作区还没有 profile 时，先用 examples/profile.yaml 的默认配置展示。
+    let fallback = null;
+    if (workspace && fs.existsSync(EXAMPLE_PROFILE)) {
+      try { fallback = readYaml(EXAMPLE_PROFILE); } catch { fallback = null; }
+    }
+    return { path: file, exists: false, data: fallback };
+  }
   try {
     return { path: file, exists: true, data: readYaml(file) };
   } catch (err) {
@@ -351,6 +358,9 @@ async function handleApi(req, res, url) {
     const dir = workspaceDir(name);
     await fsp.mkdir(path.join(dir, 'skills'), { recursive: true });
     await fsp.mkdir(path.join(dir, 'flows'), { recursive: true });
+    if (fs.existsSync(EXAMPLE_PROFILE)) {
+      await fsp.copyFile(EXAMPLE_PROFILE, path.join(dir, 'profile.yaml'));
+    }
     await fsp.writeFile(
       path.join(dir, 'workspace.json'),
       JSON.stringify({ name, created: new Date().toISOString() }, null, 2) + '\n'

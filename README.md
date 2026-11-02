@@ -62,6 +62,8 @@ cd agent-workflow
     profile.yaml   # 未连接项目时保存的 profile
   ```
 
+- 创建时会自动写入一份 `profile.yaml`（来自 `examples/profile.yaml`，含默认 flows、commit 规则和两级 MR 目标）。
+- 仓库的 skills/flows 会直接出现在编辑器里（只读）；需要修改时保存或「复制到工作区」即可生成工作区覆盖版本。
 - 编辑器左侧选择或新建工作区；未选择时仓库只读，不能保存流程或 skill。
 - 命令行管理：
 

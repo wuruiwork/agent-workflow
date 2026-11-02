@@ -51,10 +51,16 @@ case "$CMD" in
       exit 1
     fi
     mkdir -p "$dir/skills" "$dir/flows"
+    if [ -f "$ROOT/examples/profile.yaml" ]; then
+      cp "$ROOT/examples/profile.yaml" "$dir/profile.yaml"
+    fi
     printf '{\n  "name": "%s",\n  "created": "%s"\n}\n' \
       "$NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$dir/workspace.json"
     echo "已创建工作区: $NAME"
     echo "路径: $dir"
+    if [ -f "$dir/profile.yaml" ]; then
+      echo "已写入默认配置: $dir/profile.yaml"
+    fi
     echo
     echo "安装时叠加："
     echo "  ./install.sh --workspace $NAME --agents claude,codex --yes"
