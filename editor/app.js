@@ -287,10 +287,24 @@ function renderStages() {
   $('#stages').innerHTML = (state.flow?.stages || []).map(stageCard).join('');
 }
 
+function skillMeta(name) {
+  return state.skills.find((k) => k.name === name) || null;
+}
+
+function shortText(text, max = 48) {
+  const plain = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!plain) return '';
+  return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain;
+}
+
 function skillOptions(current) {
   const names = state.skills.map((k) => k.name);
-  const options = names
-    .map((n) => `<option value="${esc(n)}" ${n === current ? 'selected' : ''}>${esc(n)}</option>`)
+  const options = state.skills
+    .map((k) => {
+      const desc = shortText(k.description);
+      const label = desc ? `${k.name} — ${desc}` : k.name;
+      return `<option value="${esc(k.name)}" title="${esc(k.description || '')}" ${k.name === current ? 'selected' : ''}>${esc(label)}</option>`;
+    })
     .join('');
   if (current && !names.includes(current)) {
     const suffix = state.lang === 'zh' ? '（未在仓库中）' : ' (not in repo)';
@@ -300,11 +314,24 @@ function skillOptions(current) {
   return options || `<option value="${esc(current)}" selected>${esc(current)}</option>`;
 }
 
+function skillDescHtml(ref) {
+  if (!ref) return `<span class="hint">${esc(L('stage.skillHint'))}</span>`;
+  const meta = skillMeta(ref);
+  if (!meta) return `<span class="hint warn">${esc(L('stage.skillMissing', { name: ref }))}</span>`;
+  const badge = esc(L(meta.source === 'workspace' ? 'skills.workspaceBadge' : 'skills.repoBadge'));
+  const desc = meta.description ? esc(shortText(meta.description, 120)) : esc(L('skills.noDesc'));
+  return `<span class="chip">${badge}</span><span>${desc}</span>
+    <button class="link" data-view-skill="${esc(meta.name)}">${esc(L('skills.view'))}</button>`;
+}
+
 function stageCard(s, i) {
   const hooks = state.flow.checkpoints || [];
   const refField = s.type === 'skill'
     ? `<select data-field="ref">${skillOptions(s.ref)}</select>`
     : `<input class="input" data-field="ref" value="${esc(s.ref || '')}">`;
+  const skillHint = s.type === 'skill'
+    ? `<p class="hint stage-skill-desc" data-skill-desc>${skillDescHtml(s.ref)}</p>`
+    : '';
   return `
     <div class="stage-card" draggable="true" data-index="${i}">
       <div class="stage-head">
@@ -317,6 +344,7 @@ function stageCard(s, i) {
         </select>
       </label>
       <label>${lbl('stage.ref', '引用', 'Reference')}${refField}</label>
+      ${skillHint}
       <label>${lbl('stage.artifact', '产物文件', 'Artifact file')}<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
       <label>${lbl('stage.gate', '状态门禁', 'Status gate')}<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
       <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> ${lbl('stage.approval', '人工确认', 'Manual approval')}</label>
@@ -540,9 +568,12 @@ function profileHtml() {
 function skillsHtml() {
   const rows = state.skills.map((s) => {
     const isRepo = s.source !== 'workspace';
+    const view = `<button class="btn ghost" data-skill-action="view" data-skill="${esc(s.name)}">${esc(L('skills.view'))}</button>`;
     const actions = isRepo
-      ? `<button class="btn ghost" data-skill-action="copy" data-skill="${esc(s.name)}">${esc(L('skills.copy'))}</button>`
-      : `<button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">${esc(L('skills.edit'))}</button>
+      ? `${view}
+         <button class="btn ghost" data-skill-action="copy" data-skill="${esc(s.name)}">${esc(L('skills.copy'))}</button>`
+      : `${view}
+         <button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">${esc(L('skills.edit'))}</button>
          <button class="btn danger" data-skill-action="delete" data-skill="${esc(s.name)}">${esc(L('skills.delete'))}</button>`;
     return `
       <div class="skill-row">
@@ -566,25 +597,29 @@ function skillsHtml() {
     <div class="skill-list">${rows || `<p class="hint">${esc(L('skills.empty'))}</p>`}</div>`;
 }
 
-function openSkillModal(skill, isNew) {
+function openSkillModal(skill, isNew, readOnly = false) {
+  const title = readOnly
+    ? L('modal.viewSkill', { name: skill.name })
+    : isNew ? L('modal.newSkill') : L('modal.editSkill', { name: skill.name });
+  const ro = readOnly ? ' readonly' : '';
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal">
-      <h3>${isNew ? esc(L('modal.newSkill')) : esc(L('modal.editSkill', { name: skill.name }))}</h3>
+      <h3>${esc(title)}</h3>
       <label>${lbl('skill.name', '名称（小写字母、数字、连字符）', 'Name (lowercase letters, digits, hyphens)')}
-        <input class="input" id="skill-name" value="${esc(skill.name || '')}" ${isNew ? '' : 'disabled'}>
+        <input class="input" id="skill-name" value="${esc(skill.name || '')}" ${isNew || readOnly ? 'disabled' : ''}>
       </label>
       <label>${lbl('skill.description', '描述（告诉 agent 何时使用）', 'Description (tells the agent when to use it)')}
-        <textarea id="skill-desc" rows="3">${esc(skill.description || '')}</textarea>
+        <textarea id="skill-desc" rows="3"${ro}>${esc(skill.description || '')}</textarea>
       </label>
       <label>${lbl('skill.body', 'SKILL.md 正文（Markdown）', 'SKILL.md body (Markdown)')}
-        <textarea id="skill-body" rows="16" spellcheck="false">${esc(skill.body || '')}</textarea>
+        <textarea id="skill-body" rows="16" spellcheck="false"${ro}>${esc(skill.body || '')}</textarea>
       </label>
       <div class="modal-actions">
         <span class="hint" id="modal-error"></span>
-        <button class="btn" data-modal="cancel">${esc(L('modal.cancel'))}</button>
-        <button class="btn primary" data-modal="save">${esc(L('modal.save'))}</button>
+        <button class="btn" data-modal="cancel">${esc(readOnly ? L('modal.close') : L('modal.cancel'))}</button>
+        ${readOnly ? '' : `<button class="btn primary" data-modal="save">${esc(L('modal.save'))}</button>`}
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -593,7 +628,7 @@ function openSkillModal(skill, isNew) {
       overlay.remove();
       return;
     }
-    if (e.target.dataset.modal !== 'save') return;
+    if (readOnly || e.target.dataset.modal !== 'save') return;
     const name = $('#skill-name', overlay).value.trim();
     const description = $('#skill-desc', overlay).value.trim();
     const body = $('#skill-body', overlay).value;
@@ -847,7 +882,15 @@ function bindEvents() {
   const stagesEl = $('#stages');
   stagesEl.addEventListener('input', onStageEdit);
   stagesEl.addEventListener('change', onStageEdit);
-  stagesEl.addEventListener('click', (e) => {
+  stagesEl.addEventListener('click', async (e) => {
+    const viewSkill = e.target.closest('[data-view-skill]')?.dataset.viewSkill;
+    if (viewSkill) {
+      try {
+        const skill = await api(`/api/skill?name=${encodeURIComponent(viewSkill)}`);
+        openSkillModal(skill, false, true);
+      } catch (err) { setStatus(err.message, 'err'); }
+      return;
+    }
     if (e.target.closest('[data-action="del-stage"]')) {
       const card = e.target.closest('.stage-card');
       const i = +card.dataset.index;
@@ -925,6 +968,10 @@ function onStageEdit(e) {
     }
     markDirty();
     if (field === 'type') renderStages();
+    if (field === 'ref' && stage.type === 'skill') {
+      const hint = card.querySelector('[data-skill-desc]');
+      if (hint) hint.innerHTML = skillDescHtml(stage.ref);
+    }
     renderInspector();
     return;
   }
@@ -1027,6 +1074,13 @@ async function onInspectorClick(e) {
     if (skillAction === 'import') { importSkillFolder(); return; }
     const name = e.target.closest('[data-skill]')?.dataset.skill;
     if (!name) return;
+    if (skillAction === 'view') {
+      try {
+        const skill = await api(`/api/skill?name=${encodeURIComponent(name)}`);
+        openSkillModal(skill, false, true);
+      } catch (err) { setStatus(err.message, 'err'); }
+      return;
+    }
     if (skillAction === 'copy') {
       try {
         await api('/api/skill/copy', { method: 'POST', body: { name } });

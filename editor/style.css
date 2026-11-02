@@ -134,6 +134,9 @@ textarea { font-family: var(--mono); font-size: 12px; min-height: 70px; resize: 
 .stage-head .icon {
   background: transparent; border: none; color: var(--danger); cursor: pointer; font-size: 16px;
 }
+.stage-skill-desc { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; }
+.link:hover { color: var(--accent-2); }
 .stage-hooks { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 4px; border-top: 1px dashed var(--border); }
 .stage-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .chip { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: rgba(79,140,255,.16); color: #9dc0ff; }
