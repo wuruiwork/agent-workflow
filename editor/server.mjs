@@ -300,6 +300,20 @@ function validateProfile(data) {
       if (!names.has(f)) throw new Error(`flows 里包含未安装的流程: ${f}`);
     }
   }
+  const retention = data.retention?.archive;
+  if (retention !== undefined) {
+    if (!retention || typeof retention !== 'object' || Array.isArray(retention)) {
+      throw new Error('retention.archive 必须是对象');
+    }
+    for (const key of ['keep_latest', 'keep_days', 'min_keep']) {
+      if (retention[key] !== undefined && (!Number.isInteger(retention[key]) || retention[key] < 0)) {
+        throw new Error(`retention.archive.${key} 必须是非负整数`);
+      }
+    }
+    if (retention.mode !== undefined && !['ask', 'report', 'auto'].includes(retention.mode)) {
+      throw new Error('retention.archive.mode 只能是 ask / report / auto');
+    }
+  }
   if (data.actions?.mr?.targets !== undefined && !Array.isArray(data.actions.mr.targets)) {
     throw new Error('actions.mr.targets 必须是数组');
   }

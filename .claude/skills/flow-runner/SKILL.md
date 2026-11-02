@@ -72,7 +72,7 @@ flows: [doc-first, hotfix]
    - 先读取项目 `.claude/flows/profile.yaml` 的 `flows`，把可选流程限制在启用列表内（规则见「项目启用的流程」）。
    - `$ARGUMENTS` 以流程名开头时直接用该流程；不在启用列表内则停止并列出可用流程。
    - 否则根据请求判断：
-     - 单模块、预计 ≤3 个文件、不需要独立的 brief/design/tasks → `lite`（plan-code 负责设计 + 实现）。
+     - 单模块、预计 ≤3 个文件、不需要独立的 brief/design/tasks → `lite`（plan-code 负责设计 + 实现，设计需用户确认）。
      - 跨模块、需要分阶段确认 → `doc-first`。
      - 线上缺陷、需要先复现定位 → `hotfix`。
      - 需要交付 Word/PDF 开发文档 → `dev-docs`（官方 docx skill + LibreOffice）。
@@ -112,12 +112,15 @@ flows: [doc-first, hotfix]
 3. 执行：
    - `type: doc`：读取 `<flows>/<flow>/<ref>`，按文档执行。
    - `type: skill`：调用 `ref` 对应的 skill（Claude Code 用 `Skill` 工具；Codex 读取并执行该 skill 的 `SKILL.md`）。
-     - 从 profile 取 `bindings.<stage>.task_end`；非空时在调用提示中声明，并把 `FLOW`、`FEATURE`、`STAGE` 和动作列表传给 skill。`task_end` 只允许 `commit`；出现 `push` / `mr` 时停止并报告。
+     - 该阶段 `approval: true` 时，先读产物当前 `status`，按「审批阶段的两遍执行」决定本次是设计轮还是实现轮。
+     - 从 profile 取 `bindings.<stage>.task_end`；非空时在调用提示中声明，并把 `FLOW`、`FEATURE`、`STAGE` 和动作列表传给 skill。`task_end` 只允许 `commit`；出现 `push` / `mr` 时停止并报告。设计轮不执行 `task_end`，实现轮才传入。
      - 没有声明时明确告诉 skill：本阶段不做任务级提交，由 `stage_end` 统一处理。
-   - 调用 `plan-code` 时，要求它把设计文档写到 `docs/specs/current/00-plan.md`；如果它写到 `.tmp`，完成后复制到该路径并确认 `status: implemented`。
-4. 阶段产物完成后：
-   - `approval: true` 的阶段必须等用户明确确认，才能改产物状态。
+   - 调用 `plan-code` 时，要求它把设计文档写到 `docs/specs/current/00-plan.md`；设计轮传 `PLAN_ROUND=design` 并要求 `status: draft`，实现轮传 `PLAN_ROUND=implement` 并要求完成后 `status: implemented`。如果它写到 `.tmp`，复制到目标路径。
+4. 阶段产物完成后的处理：
    - 检查产物路径和 frontmatter 状态。
+   - `approval: true` 的 `type: doc` 阶段：产物为草案时停止并询问用户；用户确认后只把 frontmatter `status` 改为 `approved`，不改正文。
+   - `approval: true` 的 `type: skill` 阶段：设计轮产物为 `draft` 时停止并询问用户，不执行钩子、不推进 phase；用户确认后只把 `status` 改为 `approved`，立即重新进入同一阶段执行实现轮。
+   - 实现轮产物达到阶段 gate 后，才继续执行钩子和 `skillgate phase`。
 5. 执行阶段钩子：
    - 读取项目 `.claude/flows/profile.yaml`（`profile.local.yaml` 覆盖本机差异）；不存在时跳过本步骤，行为与旧版一致。
    - 取 flow.yaml 中该 stage 的 `hooks`；每个 hook 必须是 flow.yaml 顶层 `checkpoints` 声明过的值。
@@ -142,6 +145,49 @@ flows: [doc-first, hotfix]
 
    全部通过后执行该 stage 的 `finish` 钩子（典型绑定是 push + mr）；没有绑定则提示用户可以 `git push`。push 时由 hook / CI 再次校验。
 
+### 审批阶段的两遍执行
+
+`approval: true` 的 `type: skill` 阶段用两遍执行同一个阶段；`.skillgate/phase` 只在实现轮完成后推进。
+
+| 轮次 | 判断依据 | 传给 skill | 产物状态 | runner 行为 |
+|---|---|---|---|---|
+| 设计轮 | 产物不存在，或 `status: draft` 且用户尚未确认 | `PLAN_ROUND=design`：只出设计，不写代码 | `draft` | 展示设计、请求用户确认；不执行 `task_end` / `stage_end`，不推进 phase |
+| 实现轮 | `status: approved`（或用户本轮明确确认） | `PLAN_ROUND=implement`：按已确认文档实现 | `implemented` | 检查产物后执行阶段钩子，再 `skillgate phase <stage>` |
+
+- 用户确认时，runner 只修改 frontmatter 的 `status: draft` → `approved`，不改正文；随后重入同一阶段。
+- 恢复会话时按产物状态续跑：`draft` → 先问用户是否确认；`approved` → 直接实现轮；`implemented` → 直接执行阶段钩子和 `phase`。
+- 设计轮禁止写功能代码；实现轮要求 `status` 已为 `approved`，否则退回设计轮等待确认。
+- 未声明 `approval: true` 的 `type: skill` 阶段保持一遍执行。
+
+### 归档清理
+
+`archive` 阶段必须执行阶段文档中的「清理」清单：清理本 feature 和 `.tmp/` 下的临时文件、重复草稿、旧版本与构建/导出中间产物；保留流程产物、`INDEX`、被 README/AGENTS/docs/ 引用的文件和最终交付物。删除 tracked 文件前先列出路径和原因并等用户确认（`mode: auto` 除外，见「归档保留策略」）；未确认时保留，不阻塞归档。清理后重新执行 `skillgate check`；因删除导致门禁失败时恢复文件并报告，不得绕过门禁。清理结果写入归档完成输出，并在 `stage_end` 提交中体现（如有删除）。不得以清理为由删除流程产物或改写归档结论。
+
+### 归档保留策略
+
+归档清理完成后，按项目 profile 的 `retention.archive` 处理历史 feature；字段缺省时使用默认值。
+
+```yaml
+retention:
+  archive:
+    keep_latest: 20   # 至少保留最近 N 个已归档 feature
+    keep_days: 180    # 至少保留最近 N 天内归档的 feature
+    min_keep: 5       # 无论如何至少保留 N 个
+    mode: ask         # ask | report | auto
+```
+
+- 作用范围：flow.yaml 的 `archive` 目录（如 `docs/specs`、`docs/deliverables`、`presentations`），不含 `current` 符号链接和 INDEX 文件。
+- 候选必须同时满足：目录已被 git 跟踪且工作区干净（无未提交/未跟踪文件）；`00-*.md` 主文档 frontmatter 有 `archived: YYYY-MM-DD`（找不到时扫描目录内其他 `.md`）；不是 `current` 指向的 feature；不在最近 `keep_latest` 个已归档 feature 中；归档日期早于 `keep_days` 天；未被 README.md、AGENTS.md 或 `docs/`（不含归档目录和 INDEX）引用。
+- 永不清理：`current` 指向的 feature、未归档 feature、缺少 `archived` 字段的 feature、工作区不干净的 feature、保留数量低于 `min_keep` 时、用途不明确或无法确认是否必要的文件。缺少 `archived` 时先补归档字段，不要猜测。
+- `mode`：
+  - `report`：只列出候选，不删除。
+  - `ask`（默认）：列出候选路径、归档日期和原因，等用户确认后删除。
+  - `auto`：项目显式启用后自动删除候选；删除前仍打印清单。
+- INDEX：删除前必须存在 `INDEX.md`，且每个候选都能在 INDEX 找到对应行；缺失时拒绝删除并报告。不删除行；把状态改为 `purged`，保留原归档日期，并在摘要后追加 `（docs 已于 YYYY-MM-DD 清理）`。
+- 删除后运行 `skillgate check`；失败时用 `git restore` 恢复被删目录并报告，不得绕过门禁。
+- 完成输出记录：保留数量、清理数量、跳过数量及原因。
+- agent-workflow 仓库内可用 `node scripts/archive-retention.mjs --project <dir> --flow <flow>` 预演候选；目标项目没有该脚本时按本节规则手工执行。
+
 ## doc-first 阶段表
 
 | 阶段 | 类型 | 执行 | 产物 | 推进条件 |
@@ -158,9 +204,11 @@ lite 流程（小型项目/小改动）：
 
 | 阶段 | 类型 | 执行 | 产物 | 推进条件 |
 |---|---|---|---|---|
-| plan | skill | `plan-code` | `00-plan.md` | `status: implemented` |
+| plan | skill | `plan-code`（设计轮 → 用户确认 → 实现轮） | `00-plan.md` | 确认后 `status: implemented` |
 | verify | doc | `stages/verify.md` | `40-verify.md` | `status: pass` + 测试命令通过 |
 | archive | doc | `stages/archive.md` | `docs/specs/<feature>/` | 归档完成 |
+
+plan 阶段 `approval: true`：设计轮产物为 `draft` 时停在用户确认点；确认后把状态改为 `approved` 并重入同一阶段实现，直到 `implemented` 才执行阶段钩子和 `skillgate phase plan`。
 
 hotfix 流程见 `<flows>/hotfix/flow.yaml`：reproduce → tasks → implement → verify → archive，阶段数量和 doc-first 不同，复用 `df-implement` 和 `df-verify`。
 
@@ -200,11 +248,12 @@ ppt 流程（设计感更强的 .pptx）：
 2. **不跳阶段**：`skillgate phase` 失败就是失败，不允许绕过。
 3. **不越权**：`type: skill` 阶段把工作交给对应 skill；不要在本 skill 里重写它的步骤。
 4. **不自己执行 git**：runner 不拼 `git add` / `git commit` / `git push`；提交、推送、MR 只能调用 `git-action`，且必须由 profile 绑定驱动。没有 profile 时只提示用户，不替代执行。
-5. **人工确认**：brief、design、tasks 三个阶段必须等用户确认后才能改 `approved`。
+5. **人工确认**：brief、design、tasks 三个阶段必须等用户确认后才能改 `approved`；`approval: true` 的 skill 阶段必须先完成设计轮并等待用户确认，才能进入实现轮。
 6. **单一活跃 feature**：`current` 符号链接指向当前 feature；切换 feature 前确认旧 feature 已归档或明确暂停。
 7. **策略可审计**：切换流程时保留原 `.skillgate/done.yaml` 的 diff，必要时提交到分支。
 8. **钩子不改门禁**：`git-action` 成功不等于门禁通过，失败也不能被忽略；钩子只执行动作，不能替代 `skillgate phase`。
 9. **钩子顺序固定**：任务完成后执行 `task_end`，阶段产物完成后执行 `stage_end`，最后推进 phase；`finish` 动作只在全部门禁通过后执行。`task_end` 只允许 `commit`；`push` / `mr` 默认放在 `finish`，项目确需中途发布时才绑定到 `stage_end`。
+10. **归档清理与保留**：`archive` 阶段必须按阶段文档执行清理，并遵守 `retention.archive`；只删除临时/冗余文件或符合保留策略的历史 feature。删除 tracked 文件前必须让用户确认（`mode: auto` 除外），不得删除流程产物或改写归档结论。
 
 ## 完成输出
 

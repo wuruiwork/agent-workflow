@@ -7,7 +7,7 @@
 | 流程 | 文件 | 适用 | 说明 |
 |---|---|---|---|
 | doc-first | `doc-first/flow.yaml` | 跨模块、需要分阶段确认 | 需求 → 设计 → 任务 → 实现 → 审查 → 验证 → 归档 |
-| lite | `lite/flow.yaml` | 小型项目/小改动、单模块 ≤3 文件 | plan-code 设计+实现 → 验证 → 归档 |
+| lite | `lite/flow.yaml` | 小型项目/小改动、单模块 ≤3 文件 | plan-code 设计 → 用户确认 → 实现 → 验证 → 归档 |
 | hotfix | `hotfix/flow.yaml` | 线上缺陷 | 复现定位 → 单任务 → 实现 → 验证 → 归档 |
 | dev-docs | `dev-docs/flow.yaml` | Word/PDF 开发文档 | 简报 → 草稿 → 评审 → Word → PDF → 归档 |
 | ppt | `ppt/flow.yaml` | 项目演示文稿 | 简报 → 大纲 → 内容 → 设计 → PPTX → 视觉评审 → PDF → 归档 |
@@ -38,6 +38,11 @@ sh ~/.claude/flows/doc-first/project-template/scripts/install-pre-push.sh
 阶段语义：`.skillgate/phase` 记录**最近完成的阶段**。完成 brief 后执行
 `skillgate phase brief`，skillgate 会重新校验 brief 及之前所有阶段的门禁；
 通过才写入 marker。不是“移动到下一个阶段”。
+
+`approval: true` 的 skill 阶段（lite 的 plan）分两遍执行同一阶段：
+设计轮只产出 `status: draft` 的设计文档并停在用户确认点；用户确认后
+把状态改为 `approved` 并重入同一阶段执行实现轮，完成后才是
+`status: implemented`。设计轮不执行阶段钩子，也不推进 phase。
 
 阶段门禁（`phases` gate）只在分支里出现流程产物（`docs/specs/**` 等）时启用；
 不经过流程的普通改动不会被 brief 阶段卡住，流程内仍按阶段严格推进。
@@ -90,6 +95,32 @@ bindings:
 这些文档必须在 git 跟踪范围内，CI 才能校验；不要放进 `.tmp` 或被 `.gitignore` 忽略。
 `.tmp/docfirst/scripts/` 只放临时验证脚本，不参与门禁。
 
+归档阶段负责清理本 feature 和 `.tmp/` 下的临时/冗余文件：保留流程产物、`INDEX`、
+被 README/AGENTS/docs 引用的文档和最终交付物；草稿、旧版本、编辑器备份和构建/导出
+中间文件及时删除。删除 tracked 文件前先列出清单并等用户确认。
+
+## 归档保留策略
+
+项目可以在 profile 里配置历史 feature 的保留策略；归档阶段按此清理过旧的记录：
+
+```yaml
+retention:
+  archive:
+    keep_latest: 20
+    keep_days: 180
+    min_keep: 5
+    mode: ask
+```
+
+- `keep_latest` / `keep_days`：至少保留最近 N 个或 N 天内归档的 feature（取并集）。
+- `min_keep`：无论如何至少保留 N 个已归档 feature。
+- `mode`：`report` 只报告；`ask`（默认）列清单等用户确认；`auto` 自动删除候选。
+- 只处理 tracked 且工作区干净的目录；`INDEX.md` 缺失时拒绝删除；`current`、未归档 feature、被 README/AGENTS/docs 引用的 feature 永不清理。
+- INDEX 不删行；清理后的 feature 状态改为 `purged`，保留归档日期和摘要。
+- 删除后重新运行 `skillgate check`；失败时用 `git restore` 恢复。
+- 仓库内可预演候选：`node scripts/archive-retention.mjs --project <dir> --flow <flow>`；
+  加 `--delete` 才会删除（`mode: auto` 或同时传 `--yes`）。
+
 ## 当前 skills
 
 本地自有 8 个：
@@ -101,7 +132,7 @@ bindings:
 | `df-implement` | 按任务实现，可单独使用 | doc-first / hotfix |
 | `code-review` | 代码审查，可单独使用 | doc-first |
 | `df-verify` | 验证门禁，可单独使用 | doc-first / hotfix |
-| `plan-code` | 小型项目/小改动的设计 + 实现，可单独使用 | lite |
+| `plan-code` | 小型项目/小改动的设计 → 确认 → 实现，可单独使用 | lite |
 | `docs-steward` | 文档治理调度：audit / init / update / verify | 独立，归档后可选 |
 | `repository-docs` | README / AGENTS.md / docs 的写作规范（vendored MIT） | 由 docs-steward 调用 |
 
@@ -165,3 +196,4 @@ dev-docs 依赖 `docx` + `soffice`；ppt 依赖 `ppt-master` + `soffice` + `pdft
 - 状态只由 `skillgate phase` 写，模型只能申请。
 - 动作与门禁分离：`git-action` 负责执行，skillgate 只负责判定，互不替代。
 - 本地 commit 由 profile 按阶段自动执行；push 由 profile 决定时机，CI + 分支保护是最终硬层。
+- 归档即清理：流程产物作为记录保留，临时草稿、重复版本和构建中间文件在 archive 阶段清理；过旧的历史 feature 按 `retention.archive` 策略清理。

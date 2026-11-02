@@ -1,6 +1,6 @@
 name: lite
 version: 2
-description: 小型项目/小改动的轻量流程：plan-code 设计+实现 → 验证 → 归档
+description: 小型项目/小改动的轻量流程：plan-code 设计 → 用户确认 → 实现 → 验证 → 归档
 policy: policy.yaml
 artifacts: docs/specs/current
 archive: docs/specs
@@ -17,6 +17,8 @@ stages:
     ref: plan-code
     artifact: 00-plan.md
     gate: implemented
+    # 第一遍只出设计（status: draft）；用户确认后重入本阶段实现。
+    approval: true
     hooks: [task_end, stage_end]
 
   - id: verify

@@ -508,6 +508,7 @@ function profileHtml() {
   const push = (actions.push ||= {});
   const mr = (actions.mr ||= {});
   const targets = (mr.targets ||= []);
+  const retention = p.retention?.archive || {};
   return `
     <div class="profile-form">
       <section>
@@ -516,6 +517,23 @@ function profileHtml() {
           ${state.flows.map((f) => `<label><input type="checkbox" data-flow-enabled="${esc(f.name)}" ${(p.flows || []).includes(f.name) ? 'checked' : ''}> ${esc(f.name)}</label>`).join('') || `<span class="hint">${esc(L('side.noFlows'))}</span>`}
         </div>
         <p class="hint">${esc(L('profile.flowsHint'))}</p>
+      </section>
+
+      <section>
+        <h3>${esc(L('profile.retention'))}</h3>
+        <p class="hint">${esc(L('profile.retentionHint'))}</p>
+        <div class="grid-2">
+          <label>${lbl('project.keepLatest', '保留最近 N 个', 'Keep latest')}<input class="input" type="number" min="0" step="1" data-number data-p="retention.archive.keep_latest" value="${esc(retention.keep_latest ?? 20)}"></label>
+          <label>${lbl('project.keepDays', '保留最近 N 天', 'Keep days')}<input class="input" type="number" min="0" step="1" data-number data-p="retention.archive.keep_days" value="${esc(retention.keep_days ?? 180)}"></label>
+          <label>${lbl('project.minKeep', '至少保留 N 个', 'Minimum kept')}<input class="input" type="number" min="0" step="1" data-number data-p="retention.archive.min_keep" value="${esc(retention.min_keep ?? 5)}"></label>
+          <label>${lbl('project.retentionMode', '清理模式', 'Cleanup mode')}
+            <select data-p="retention.archive.mode">
+              <option value="ask" ${(retention.mode || 'ask') === 'ask' ? 'selected' : ''}>ask</option>
+              <option value="report" ${retention.mode === 'report' ? 'selected' : ''}>report</option>
+              <option value="auto" ${retention.mode === 'auto' ? 'selected' : ''}>auto</option>
+            </select>
+          </label>
+        </div>
       </section>
 
       <section>
@@ -1033,6 +1051,7 @@ function onInspectorChange(e) {
     else if (t.dataset.list === 'lines') value = t.value.split('\n').map((s) => s.trim()).filter(Boolean);
     else if (t.dataset.list === 'csv') value = t.value.split(',').map((s) => s.trim()).filter(Boolean);
     else if (t.dataset.list === 'pairs') value = parsePairs(t.value);
+    else if (t.dataset.number !== undefined) value = t.value === '' ? undefined : Number(t.value);
     else value = t.value;
     setPath(state.profile, t.dataset.p, value);
     markDirty();
