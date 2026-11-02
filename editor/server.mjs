@@ -18,6 +18,9 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const FLOWS_DIR = path.join(REPO_ROOT, 'flows');
 const SKILLS_DIR = path.join(REPO_ROOT, 'skills');
 const EXAMPLE_PROFILE = path.join(REPO_ROOT, 'examples', 'profile.yaml');
+// 工作区（缓存区）放在仓库内，已加入 .gitignore，不影响发布仓库的干净状态。
+const WORKSPACES_DIR = process.env.AGENT_WORKFLOW_WORKSPACES
+  || path.join(REPO_ROOT, 'workspaces');
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -35,9 +38,12 @@ if (args.help) {
 
   --project <dir>  同时编辑该项目的 .claude/flows/profile.yaml
                    路径含空格时可以不加引号（会合并到下一个 --flag 之前）；支持 ~
+  --workspace <name>  启动时载入指定工作区（缓存区）
   --port <n>       监听端口，默认 4173，占用时自动顺延
   --no-open        不自动打开浏览器
-  --help           显示帮助`);
+  --help           显示帮助
+
+工作区目录: ${WORKSPACES_DIR}`);
   process.exit(0);
 }
 
@@ -52,7 +58,7 @@ if (projectRoot && !fs.existsSync(projectRoot)) {
 }
 
 function parseArgs(argv) {
-  const out = { project: null, port: 4173, open: true, help: false };
+  const out = { project: null, workspace: null, port: 4173, open: true, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') out.help = true;
@@ -66,8 +72,10 @@ function parseArgs(argv) {
         process.exit(2);
       }
       out.project = parts.join(' ');
-    } else if (a === '--port') out.port = Number(argv[++i]);
+    } else if (a === '--workspace') out.workspace = argv[++i];
+    else if (a === '--port') out.port = Number(argv[++i]);
     else if (a.startsWith('--project=')) out.project = a.slice(10);
+    else if (a.startsWith('--workspace=')) out.workspace = a.slice(12);
     else if (a.startsWith('--port=')) out.port = Number(a.slice(7));
     else { console.error(`未知参数: ${a}`); process.exit(2); }
   }
@@ -81,21 +89,59 @@ const isInside = (child, parent) => {
 
 const flowNameRe = /^[a-z0-9][a-z0-9-]*$/;
 const skillNameRe = /^[a-z0-9][a-z0-9-]*$/;
+const workspaceNameRe = /^[a-z0-9][a-z0-9-]*$/;
 
-function flowPath(name) {
+let workspace = args.workspace ? String(args.workspace) : null;
+if (workspace && (!workspaceNameRe.test(workspace) || !fs.existsSync(path.join(WORKSPACES_DIR, workspace)))) {
+  console.error(`工作区不存在或名称非法: ${workspace}`);
+  console.error(`工作区目录: ${WORKSPACES_DIR}`);
+  process.exit(1);
+}
+
+function workspaceDir(name) {
+  if (!workspaceNameRe.test(name || '')) throw new Error(`非法工作区名: ${name}`);
+  return path.join(WORKSPACES_DIR, name);
+}
+
+function activeWorkspaceDir() {
+  return workspace ? workspaceDir(workspace) : null;
+}
+
+function requireWorkspace() {
+  const dir = activeWorkspaceDir();
+  if (!dir) throw new Error('请先选择或新建工作区（缓存区）；发布仓库保持只读');
+  return dir;
+}
+
+function listWorkspaces() {
+  if (!fs.existsSync(WORKSPACES_DIR)) return [];
+  const count = (dir) => (fs.existsSync(dir)
+    ? fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).length
+    : 0);
+  return fs.readdirSync(WORKSPACES_DIR, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && workspaceNameRe.test(d.name))
+    .map((d) => {
+      const dir = path.join(WORKSPACES_DIR, d.name);
+      return {
+        name: d.name,
+        skills: count(path.join(dir, 'skills')),
+        flows: count(path.join(dir, 'flows')),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function flowWritePath(name) {
   if (!flowNameRe.test(name)) throw new Error(`非法流程名: ${name}`);
-  return path.join(FLOWS_DIR, name, 'flow.yaml');
+  return path.join(requireWorkspace(), 'flows', name, 'flow.yaml');
 }
 
-function skillDir(name) {
+function skillWriteDir(name) {
   if (!skillNameRe.test(name || '')) throw new Error(`非法 skill 名: ${name}`);
-  return path.join(SKILLS_DIR, name);
+  return path.join(requireWorkspace(), 'skills', name);
 }
 
-function readSkill(name) {
-  if (!skillNameRe.test(name || '')) return null;
-  const file = path.join(SKILLS_DIR, name, 'SKILL.md');
-  if (!fs.existsSync(file)) return null;
+function readSkillAt(file, name) {
   const text = fs.readFileSync(file, 'utf8');
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   let meta = {};
@@ -109,6 +155,23 @@ function readSkill(name) {
   };
 }
 
+function skillRoots() {
+  const roots = [{ dir: SKILLS_DIR, source: 'repo' }];
+  const ws = activeWorkspaceDir();
+  if (ws) roots.push({ dir: path.join(ws, 'skills'), source: 'workspace' });
+  return roots;
+}
+
+function readSkill(name) {
+  if (!skillNameRe.test(name || '')) return null;
+  // 工作区优先，仓库兜底
+  for (const root of [...skillRoots()].reverse()) {
+    const file = path.join(root.dir, name, 'SKILL.md');
+    if (fs.existsSync(file)) return { ...readSkillAt(file, name), source: root.source };
+  }
+  return null;
+}
+
 function dumpSkill(name, description, body) {
   const meta = yaml.dump(
     { name, description: String(description || '').trim() },
@@ -118,18 +181,26 @@ function dumpSkill(name, description, body) {
 }
 
 function loadSkills() {
-  if (!fs.existsSync(SKILLS_DIR)) return [];
-  return fs.readdirSync(SKILLS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && skillNameRe.test(d.name))
-    .map((d) => {
-      const info = readSkill(d.name);
-      return { name: d.name, description: info?.description || '' };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const byName = new Map();
+  for (const root of skillRoots()) {
+    if (!fs.existsSync(root.dir)) continue;
+    for (const d of fs.readdirSync(root.dir, { withFileTypes: true })) {
+      if (!d.isDirectory() || !skillNameRe.test(d.name)) continue;
+      const file = path.join(root.dir, d.name, 'SKILL.md');
+      if (!fs.existsSync(file)) continue;
+      let description = '';
+      try { description = readSkillAt(file, d.name).description; } catch { description = ''; }
+      byName.set(d.name, { name: d.name, description, source: root.source });
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function profilePath() {
+function profilePath(forWrite = false) {
   if (projectRoot) return path.join(projectRoot, '.claude', 'flows', 'profile.yaml');
+  const ws = activeWorkspaceDir();
+  if (ws) return path.join(ws, 'profile.yaml');
+  if (forWrite) throw new Error('请连接项目或选择工作区后再保存 profile');
   return EXAMPLE_PROFILE;
 }
 
@@ -149,25 +220,38 @@ function readYaml(file) {
   return yaml.load(fs.readFileSync(file, 'utf8')) || {};
 }
 
+function flowRoots() {
+  const roots = [{ dir: FLOWS_DIR, source: 'repo' }];
+  const ws = activeWorkspaceDir();
+  if (ws) roots.push({ dir: path.join(ws, 'flows'), source: 'workspace' });
+  return roots;
+}
+
 function loadFlows() {
-  if (!fs.existsSync(FLOWS_DIR)) return [];
-  return fs.readdirSync(FLOWS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && flowNameRe.test(d.name))
-    .map((d) => {
-      const file = path.join(FLOWS_DIR, d.name, 'flow.yaml');
-      if (!fs.existsSync(file)) return null;
+  const byName = new Map();
+  for (const root of flowRoots()) {
+    if (!fs.existsSync(root.dir)) continue;
+    for (const d of fs.readdirSync(root.dir, { withFileTypes: true })) {
+      if (!d.isDirectory() || !flowNameRe.test(d.name)) continue;
+      const file = path.join(root.dir, d.name, 'flow.yaml');
+      if (!fs.existsSync(file)) continue;
+      // 工作区后处理，覆盖同名仓库流程
+      byName.set(d.name, { name: d.name, file, source: root.source });
+    }
+  }
+  return [...byName.values()]
+    .map(({ name, file, source }) => {
       try {
-        const policyFile = path.join(FLOWS_DIR, d.name, 'policy.yaml');
+        const policyFile = path.join(path.dirname(file), 'policy.yaml');
         let policy = null;
         if (fs.existsSync(policyFile)) {
           try { policy = readYaml(policyFile); } catch { policy = null; }
         }
-        return { name: d.name, path: file, data: readYaml(file), policy, error: null };
+        return { name, path: file, source, data: readYaml(file), policy, error: null };
       } catch (err) {
-        return { name: d.name, path: file, data: null, error: err.message };
+        return { name, path: file, source, data: null, error: err.message };
       }
     })
-    .filter(Boolean)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -249,8 +333,43 @@ async function handleApi(req, res, url) {
       flows: loadFlows(),
       skills: loadSkills(),
       profile: loadProfile(),
-      profileTarget: projectRoot ? 'project' : 'example',
+      profileTarget: projectRoot ? 'project' : workspace ? 'workspace' : 'example',
+      workspace,
+      workspaceDir: activeWorkspaceDir(),
+      workspaces: listWorkspaces(),
+      workspacesDir: WORKSPACES_DIR,
     });
+  }
+
+  if (url.pathname === '/api/workspaces' && req.method === 'GET') {
+    return sendJson(res, 200, { workspaces: listWorkspaces(), active: workspace, dir: WORKSPACES_DIR });
+  }
+
+  if (url.pathname === '/api/workspace' && req.method === 'POST') {
+    const { name } = await readBody(req);
+    if (!workspaceNameRe.test(name || '')) throw new Error('工作区名只能包含小写字母、数字和连字符');
+    const dir = workspaceDir(name);
+    await fsp.mkdir(path.join(dir, 'skills'), { recursive: true });
+    await fsp.mkdir(path.join(dir, 'flows'), { recursive: true });
+    await fsp.writeFile(
+      path.join(dir, 'workspace.json'),
+      JSON.stringify({ name, created: new Date().toISOString() }, null, 2) + '\n'
+    );
+    workspace = name;
+    return sendJson(res, 200, { ok: true, workspace: name, dir });
+  }
+
+  if (url.pathname === '/api/workspace/select' && req.method === 'POST') {
+    const { name } = await readBody(req);
+    if (name) {
+      if (!workspaceNameRe.test(name) || !fs.existsSync(workspaceDir(name))) {
+        throw new Error(`工作区不存在: ${name}`);
+      }
+      workspace = name;
+    } else {
+      workspace = null;
+    }
+    return sendJson(res, 200, { workspace, workspaceDir: activeWorkspaceDir() });
   }
 
   if (url.pathname === '/api/project' && req.method === 'POST') {
@@ -267,7 +386,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/flow' && req.method === 'POST') {
     const { data } = await readBody(req);
     validateFlow(data);
-    const file = flowPath(data.name);
+    const file = flowWritePath(data.name);
     await fsp.mkdir(path.dirname(file), { recursive: true });
     await fsp.writeFile(file, dumpFlow(data));
     return sendJson(res, 200, { ok: true, path: file });
@@ -276,7 +395,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/flow/create' && req.method === 'POST') {
     const { name } = await readBody(req);
     if (!flowNameRe.test(name || '')) throw new Error('流程名只能包含小写字母、数字和连字符');
-    const file = flowPath(name);
+    const file = flowWritePath(name);
     if (fs.existsSync(file)) throw new Error(`流程已存在: ${name}`);
     await fsp.mkdir(path.dirname(file), { recursive: true });
     await fsp.mkdir(path.join(path.dirname(file), 'stages'), { recursive: true });
@@ -298,8 +417,8 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === '/api/policy' && req.method === 'POST') {
     const { flow, data } = await readBody(req);
-    const file = path.join(FLOWS_DIR, flow, 'policy.yaml');
     if (!flowNameRe.test(flow || '')) throw new Error('非法流程名');
+    const file = path.join(path.dirname(flowWritePath(flow)), 'policy.yaml');
     const text = withHeader(`流程策略: ${flow}`, yaml.dump(data, { noRefs: true, lineWidth: -1, sortKeys: false }));
     yaml.load(text);
     await fsp.writeFile(file, text);
@@ -309,10 +428,10 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/profile' && req.method === 'POST') {
     const { data } = await readBody(req);
     validateProfile(data);
-    const file = profilePath();
+    const file = profilePath(true);
     await fsp.mkdir(path.dirname(file), { recursive: true });
     await fsp.writeFile(file, dumpProfile(data));
-    return sendJson(res, 200, { ok: true, path: file, target: projectRoot ? 'project' : 'example' });
+    return sendJson(res, 200, { ok: true, path: file, target: projectRoot ? 'project' : workspace ? 'workspace' : 'example' });
   }
 
   if (url.pathname === '/api/profile/raw' && req.method === 'GET') {
@@ -332,7 +451,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/skill' && req.method === 'POST') {
     const { name, description, body } = await readBody(req);
     if (!skillNameRe.test(name || '')) throw new Error('skill 名只能包含小写字母、数字和连字符');
-    const dir = skillDir(name);
+    const dir = skillWriteDir(name);
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, 'SKILL.md'), dumpSkill(name, description, body));
     return sendJson(res, 200, { ok: true, name });
@@ -340,9 +459,23 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === '/api/skill' && req.method === 'DELETE') {
     const { name } = await readBody(req);
-    const dir = skillDir(name);
-    if (!fs.existsSync(dir)) throw new Error(`skill 不存在: ${name}`);
+    const dir = skillWriteDir(name);
+    if (!fs.existsSync(dir)) {
+      throw new Error(`工作区里没有 skill ${name}；仓库 skill 只读，请先「复制到工作区」`);
+    }
     await fsp.rm(dir, { recursive: true, force: true });
+    return sendJson(res, 200, { ok: true, name });
+  }
+
+  if (url.pathname === '/api/skill/copy' && req.method === 'POST') {
+    const { name } = await readBody(req);
+    if (!skillNameRe.test(name || '')) throw new Error('非法 skill 名');
+    const src = path.join(SKILLS_DIR, name);
+    if (!fs.existsSync(src)) throw new Error(`仓库里没有 skill: ${name}`);
+    const dest = skillWriteDir(name);
+    if (fs.existsSync(dest)) throw new Error(`工作区已存在 skill: ${name}`);
+    await fsp.mkdir(path.dirname(dest), { recursive: true });
+    await fsp.cp(src, dest, { recursive: true });
     return sendJson(res, 200, { ok: true, name });
   }
 
@@ -350,7 +483,7 @@ async function handleApi(req, res, url) {
     const { name, files } = await readBody(req);
     if (!skillNameRe.test(name || '')) throw new Error('skill 名只能包含小写字母、数字和连字符');
     if (!Array.isArray(files) || files.length === 0) throw new Error('没有可导入的文件');
-    const dir = skillDir(name);
+    const dir = skillWriteDir(name);
     const normalized = files.map((f) => {
       const rel = String(f.path || '').replace(/\\/g, '/');
       if (!rel || rel.startsWith('/') || rel.split('/').includes('..')) throw new Error(`非法路径: ${rel}`);

@@ -21,6 +21,10 @@ const state = {
   profileTarget: 'example',
   skills: [],
   policyTests: '',
+  workspace: null,
+  workspaceDir: '',
+  workspaces: [],
+  workspacesDir: '',
   tab: 'bindings',
   dirty: false,
 };
@@ -152,9 +156,27 @@ function applyState(s) {
   state.project = s.project || null;
   state.flows = s.flows || [];
   state.skills = s.skills || [];
+  state.workspace = s.workspace || null;
+  state.workspaceDir = s.workspaceDir || '';
+  state.workspaces = s.workspaces || [];
+  state.workspacesDir = s.workspacesDir || '';
   state.profileTarget = s.profileTarget || 'example';
   state.profilePath = s.profile?.path || '';
   state.profile = s.profile?.data ? clone(s.profile.data) : defaultProfile();
+}
+
+async function reloadAll() {
+  const s = await api('/api/state');
+  applyState(s);
+  if (state.flows.length) {
+    const keep = state.flows.some((f) => f.name === state.flowName) ? state.flowName : state.flows[0].name;
+    selectFlow(keep);
+  } else {
+    state.flowName = null;
+    state.flow = null;
+  }
+  state.dirty = false;
+  renderAll();
 }
 
 function selectFlow(name) {
@@ -170,6 +192,7 @@ function selectFlow(name) {
 
 function renderAll() {
   renderEnv();
+  renderWorkspaceSelect();
   renderFlowList();
   renderFlow();
   renderInspector();
@@ -177,16 +200,25 @@ function renderAll() {
 }
 
 function renderEnv() {
-  $('#env').textContent = `仓库 ${state.repo}${state.project ? ` · 项目 ${state.project}` : ' · 未连接项目'}`;
+  const ws = state.workspace ? `工作区 ${state.workspace}` : '未选择工作区（只读）';
+  $('#env').textContent = `仓库 ${state.repo} · ${ws}${state.project ? ` · 项目 ${state.project}` : ''}`;
   $('#project-info').textContent = state.project || '（未连接）';
   if (state.project) $('#project-input').value = state.project;
+}
+
+function renderWorkspaceSelect() {
+  const sel = $('#workspace-select');
+  if (!sel) return;
+  sel.innerHTML = `<option value="">（未选择，只读）</option>` + state.workspaces.map((w) =>
+    `<option value="${esc(w.name)}" ${w.name === state.workspace ? 'selected' : ''}>${esc(w.name)}（${w.skills} skills / ${w.flows} flows）</option>`
+  ).join('');
 }
 
 function renderFlowList() {
   $('#flow-list').innerHTML = state.flows.length
     ? state.flows.map((f) => `
       <div class="flow-item ${f.name === state.flowName ? 'active' : ''}" data-flow="${esc(f.name)}">
-        <span>${esc(f.name)}</span>
+        <span>${esc(f.name)} ${f.source === 'workspace' ? '<span class="chip">工作区</span>' : ''}</span>
         ${f.error ? `<span class="err" title="${esc(f.error)}">解析失败</span>` : ''}
       </div>`).join('')
     : '<p class="hint">仓库里还没有流程</p>';
@@ -202,6 +234,7 @@ function renderFlow() {
   }
   const f = state.flow;
   meta.innerHTML = `
+    ${state.workspace ? '' : '<p class="hint warn span-2">发布仓库只读：先在左侧选择或新建工作区，再编辑流程。</p>'}
     <label>流程名<input class="input" value="${esc(f.name)}" disabled></label>
     <label>产物目录<input class="input" data-meta="artifacts" value="${esc(f.artifacts || '')}"></label>
     <label class="span-2">描述<input class="input" data-meta="description" value="${esc(f.description || '')}"></label>
@@ -441,23 +474,31 @@ function profileHtml() {
 /* ---------------- Skills ---------------- */
 
 function skillsHtml() {
-  const rows = state.skills.map((s) => `
-    <div class="skill-row">
-      <div class="skill-main">
-        <strong>${esc(s.name)}</strong>
-        <span class="hint">${esc(s.description || '（无描述）')}</span>
-      </div>
-      <div class="skill-actions">
-        <button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">编辑</button>
-        <button class="btn danger" data-skill-action="delete" data-skill="${esc(s.name)}">删除</button>
-      </div>
-    </div>`).join('');
+  const rows = state.skills.map((s) => {
+    const isRepo = s.source !== 'workspace';
+    const actions = isRepo
+      ? `<button class="btn ghost" data-skill-action="copy" data-skill="${esc(s.name)}">复制到工作区</button>`
+      : `<button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">编辑</button>
+         <button class="btn danger" data-skill-action="delete" data-skill="${esc(s.name)}">删除</button>`;
+    return `
+      <div class="skill-row">
+        <div class="skill-main">
+          <strong>${esc(s.name)} <span class="chip">${isRepo ? '仓库' : '工作区'}</span></strong>
+          <span class="hint">${esc(s.description || '（无描述）')}</span>
+        </div>
+        <div class="skill-actions">${actions}</div>
+      </div>`;
+  }).join('');
+  const disabled = state.workspace ? '' : 'disabled';
+  const hint = state.workspace
+    ? `编辑写入工作区 <code>${esc(state.workspace)}</code>，发布仓库保持只读；保存后运行 <code>./install.sh --workspace ${esc(state.workspace)} --agents claude,codex --yes</code> 同步到 agent 目录。`
+    : '先选择或新建工作区才能编辑；仓库里的 skill 只读，可点「复制到工作区」后再改。';
   return `
     <div class="yaml-actions">
-      <button class="btn primary" data-skill-action="new">＋ 新建 skill</button>
-      <button class="btn" data-skill-action="import">导入文件夹</button>
+      <button class="btn primary" data-skill-action="new" ${disabled}>＋ 新建 skill</button>
+      <button class="btn" data-skill-action="import" ${disabled}>导入文件夹</button>
     </div>
-    <p class="hint">保存后运行 <code>./install.sh --agents claude,codex --yes</code> 才会同步到 agent 目录；流程阶段 type=skill 的 ref 会直接出现在下拉框。</p>
+    <p class="hint">${hint}</p>
     <div class="skill-list">${rows || '<p class="hint">还没有 skill</p>'}</div>`;
 }
 
@@ -619,6 +660,28 @@ function bindEvents() {
     renderAll();
   });
 
+  $('#workspace-select').addEventListener('change', async (e) => {
+    if (state.dirty && !confirm('切换工作区会丢失未保存的修改，继续？')) {
+      e.target.value = state.workspace || '';
+      return;
+    }
+    try {
+      await api('/api/workspace/select', { method: 'POST', body: { name: e.target.value } });
+      await reloadAll();
+      setStatus(e.target.value ? `已切换到工作区 ${e.target.value}` : '已切换到只读模式', 'ok');
+    } catch (err) { setStatus(err.message, 'err'); }
+  });
+
+  $('#btn-new-workspace').addEventListener('click', async () => {
+    const name = prompt('工作区名称（小写字母、数字、连字符）');
+    if (!name) return;
+    try {
+      await api('/api/workspace', { method: 'POST', body: { name } });
+      await reloadAll();
+      setStatus(`工作区已创建: ${name}`, 'ok');
+    } catch (err) { setStatus(err.message, 'err'); }
+  });
+
   $('#btn-new-flow').addEventListener('click', async () => {
     const name = prompt('新流程名（小写字母、数字、连字符）');
     if (!name) return;
@@ -650,6 +713,7 @@ function bindEvents() {
 
   $('#btn-save-flow').addEventListener('click', async () => {
     if (!state.flow) return;
+    if (!state.workspace) { setStatus('请先选择或新建工作区', 'err'); return; }
     try {
       await api('/api/flow', { method: 'POST', body: { data: state.flow } });
       const item = state.flows.find((f) => f.name === state.flow.name);
@@ -660,6 +724,10 @@ function bindEvents() {
   });
 
   $('#btn-save-profile').addEventListener('click', async () => {
+    if (!state.project && !state.workspace) {
+      setStatus('请连接项目或选择工作区后再保存 profile', 'err');
+      return;
+    }
     try {
       const r = await api('/api/profile', { method: 'POST', body: { data: state.profile } });
       state.profilePath = r.path;
@@ -886,6 +954,14 @@ async function onInspectorClick(e) {
     if (skillAction === 'import') { importSkillFolder(); return; }
     const name = e.target.closest('[data-skill]')?.dataset.skill;
     if (!name) return;
+    if (skillAction === 'copy') {
+      try {
+        await api('/api/skill/copy', { method: 'POST', body: { name } });
+        await reloadSkills();
+        setStatus(`已复制到工作区: ${name}`, 'ok');
+      } catch (err) { setStatus(err.message, 'err'); }
+      return;
+    }
     if (skillAction === 'edit') {
       try {
         const skill = await api(`/api/skill?name=${encodeURIComponent(name)}`);
@@ -932,6 +1008,7 @@ async function onInspectorClick(e) {
 
   if (action === 'save-policy') {
     if (!state.flow) return;
+    if (!state.workspace) { setStatus('请先选择或新建工作区', 'err'); return; }
     try {
       await api('/api/policy', { method: 'POST', body: { flow: state.flow.name, data: generatePolicy(state.flow, { testsCommand: state.policyTests }) } });
       setStatus('policy 已保存', 'ok');

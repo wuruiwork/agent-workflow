@@ -7,6 +7,8 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+WORKSPACES_DIR="${AGENT_WORKFLOW_WORKSPACES:-$REPO_DIR/workspaces}"
+WORKSPACE=""
 
 ALL_AGENTS="claude codex"
 ALL_HOSTS="gitlab github gitee"
@@ -42,6 +44,7 @@ usage() {
   --no-skills       跳过 skills 复制
   --no-flows        跳过流程复制
   --no-plugins      跳过 Claude Code 插件配置
+  --workspace NAME  叠加工作区（缓存区）里的 skills/flows
 
 交互:
   --yes, -y         自动确认所有安装提示（适合重复执行 / CI）
@@ -54,8 +57,9 @@ usage() {
   -h, --help        显示帮助
 
 环境变量:
-  CLAUDE_CONFIG_DIR   Claude 配置目录，默认 ~/.claude
-  CODEX_HOME          Codex 配置目录，默认 ~/.codex
+  CLAUDE_CONFIG_DIR        Claude 配置目录，默认 ~/.claude
+  CODEX_HOME               Codex 配置目录，默认 ~/.codex
+  AGENT_WORKFLOW_WORKSPACES 工作区根目录，默认 <仓库>/workspaces
 EOF
 }
 
@@ -156,6 +160,8 @@ while [ $# -gt 0 ]; do
     --no-skills) INSTALL_SKILLS=0 ;;
     --no-flows) INSTALL_FLOWS=0 ;;
     --no-plugins) INSTALL_PLUGINS=0 ;;
+    --workspace) shift; WORKSPACE="${1:-}" ;;
+    --workspace=*) WORKSPACE="${1#*=}" ;;
     -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -179,12 +185,25 @@ if [ "$HOSTS_GIVEN" = 0 ] && [ "$NO_INPUT" = 0 ] && [ "$ASSUME_YES" = 0 ] && [ -
   choose_hosts
 fi
 
+if [ -n "$WORKSPACE" ]; then
+  case "$WORKSPACE" in
+    *[!a-z0-9-]*|"") echo "非法工作区名: $WORKSPACE" >&2; exit 2 ;;
+  esac
+  WORKSPACE_DIR="$WORKSPACES_DIR/$WORKSPACE"
+  if [ ! -d "$WORKSPACE_DIR" ]; then
+    echo "工作区不存在: $WORKSPACE_DIR" >&2
+    echo "可用工作区: $(ls -d "$WORKSPACES_DIR"/*/ 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')" >&2
+    exit 1
+  fi
+fi
+
 say "安装计划"
 echo "仓库:       $REPO_DIR"
 echo "Claude 目录: $CLAUDE_DIR"
 echo "Codex 目录:  $CODEX_HOME"
 echo "agents:     ${AGENTS:-（无）}"
 echo "托管平台:   ${HOSTS:-（无）}"
+echo "工作区:     ${WORKSPACE:-（无）}"
 echo "组件:       node=$INSTALL_NODE skills=$INSTALL_SKILLS flows=$INSTALL_FLOWS plugins=$INSTALL_PLUGINS"
 
 # ---- Node.js ----
@@ -377,6 +396,21 @@ if [ "$INSTALL_FLOWS" = 1 ]; then
   done
 fi
 
+if [ -n "$WORKSPACE" ]; then
+  if [ "$INSTALL_SKILLS" = 1 ] && [ -d "$WORKSPACE_DIR/skills" ]; then
+    say "叠加工作区 skills（$WORKSPACE）"
+    for dest in $(target_dirs skills); do
+      sync_tree "$WORKSPACE_DIR/skills" "$dest" "workspace skills"
+    done
+  fi
+  if [ "$INSTALL_FLOWS" = 1 ] && [ -d "$WORKSPACE_DIR/flows" ]; then
+    say "叠加工作区 flows（$WORKSPACE）"
+    for dest in $(target_dirs flows); do
+      sync_tree "$WORKSPACE_DIR/flows" "$dest" "workspace flows"
+    done
+  fi
+fi
+
 # ---- 插件（仅 Claude Code） ----
 
 if [ "$INSTALL_PLUGINS" = 1 ]; then
@@ -417,6 +451,7 @@ cat <<EOF
 
 agents:   ${AGENTS:-（无）}
 托管平台: ${HOSTS:-（无）}
+工作区:   ${WORKSPACE:-（无）}
 
 下一步：
   1. 首次安装插件后，在 Claude Code 里运行 /reload-skills 或重启会话。

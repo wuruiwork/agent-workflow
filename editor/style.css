@@ -108,6 +108,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 textarea { font-family: var(--mono); font-size: 12px; min-height: 70px; resize: vertical; }
 
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.hint.warn { color: var(--warn); }
 .hint code { background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
 
 .flow-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }

@@ -47,6 +47,28 @@ cd agent-workflow
 - 插件（`document-skills`、`ppt-master`）只配置 Claude Code；Codex 使用复制过去的 skills。
 - 登录检查：Claude Code 自动检查 `claude` 可执行文件；Codex 使用 `codex login status`，未登录时提示 `codex login`。
 
+## 工作区（缓存区）
+
+编辑器所有写入都进工作区，发布仓库保持只读、干净：
+
+- 位置：仓库内 `workspaces/<name>/`（已加入 `.gitignore`），可用 `AGENT_WORKFLOW_WORKSPACES` 改根目录。
+- 结构：
+
+  ```
+  workspaces/<name>/
+    skills/        # 新建 / 导入 / 从仓库复制的 skill
+    flows/         # 修改或新建的流程（同名覆盖仓库流程）
+    profile.yaml   # 未连接项目时保存的 profile
+  ```
+
+- 编辑器左侧选择或新建工作区；未选择时仓库只读，不能保存流程或 skill。
+- 仓库里的 skill 需要点「复制到工作区」后才能编辑。
+- 安装时叠加工作区内容（先装仓库版本，再用工作区同名内容覆盖）：
+
+  ```bash
+  ./install.sh --workspace <name> --agents claude,codex --yes
+  ```
+
 ## 项目选择流程
 
 共享仓库提供全部流程，但不同项目适用的流程不同（`ppt`、`dev-docs` 只对特定项目有意义）。
@@ -136,7 +158,7 @@ actions:
 - 「阶段动作」矩阵：按 阶段 × hook 勾选 `commit` / `push` / `mr`，直接写入 profile 的 `bindings`。
 - 每个阶段的 commit 类型。
 - 「项目配置」：启用流程、远端、分支正则、commit 类型、禁止提交路径、MR 目标（`always` / 领先提交数 / 空闲天数）。
-- 「Skills」：新建、导入文件夹、编辑、删除 skill；导入时会保留目录里的 `references/`、`scripts/` 等文件。
+- 「Skills」：新建、导入文件夹、编辑、删除 skill；导入时会保留目录里的 `references/`、`scripts/` 等文件。所有写入都在当前工作区，仓库 skill 需先「复制到工作区」。
 - 「YAML 预览」：实时预览 `flow.yaml`、`profile.yaml`、生成的 `policy.yaml`；`tests-pass` 命令直接在表单里填，不需要手改 YAML。
 - 地址栏加 `#flow=doc-first` 可以直接定位到某个流程。
 
@@ -153,6 +175,7 @@ actions:
 ```bash
 ./install.sh --agents claude,codex        # agent 多选
 ./install.sh --hosts gitlab,github        # 托管平台多选
+./install.sh --workspace myws             # 叠加工作区 skills/flows
 ./install.sh --yes                        # 全部，自动确认依赖安装
 ./install.sh --no-input                   # 非交互：跳过缺失依赖，只复制文件
 ./install.sh --dry-run                    # 只打印操作
