@@ -180,6 +180,7 @@ actions:
 - 「字段说明」：每个字段的中文说明；鼠标移到任意字段标题上也会弹出同样的提示。
 - 「高级」：只读预览 `flow.yaml`、`profile.yaml`、生成的 `policy.yaml`，用于检查或下载，不需要手改；测试命令直接在表单里填。
 - 地址栏加 `#flow=doc-first` 可以直接定位到某个流程。
+- 界面默认英文，右上角可切换中文；也可以用 `?lang=zh` / `?lang=en` 指定，选择会记在浏览器里。
 
 新建或导入 skill 后，运行 `./install.sh --agents claude,codex --yes` 同步到 agent 目录。
 
