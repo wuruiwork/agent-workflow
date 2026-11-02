@@ -37,6 +37,7 @@ cd agent-workflow
 | `scripts/init-project.sh` | 把 profile、skillgate 策略和 `.gitignore` 条目写入目标项目 |
 | `scripts/open-editor.sh` | 启动编辑器并自动打开浏览器 |
 | `scripts/workspace.sh` | 创建 / 列出 / 删除工作区（缓存区） |
+| `scripts/archive-retention.mjs` | 计算/执行归档保留策略；默认只报告，测试见同名 `.test.mjs` |
 | `docs/glab-setup.md` | Gitee / GitLab / GitHub token、glab 安装与 `glab auth login` 完整说明 |
 | `docs/editor-fields.md` | 编辑器所有字段的中文说明（由 `editor/fields.mjs` 生成） |
 
@@ -133,6 +134,8 @@ archive 完成 → commit → skillgate check → push → 创建 MR
 ```
 
 同一份 `flow.yaml` 在不同项目里可以有不同的提交、推送、MR 时机，不需要分叉流程定义。没有 `profile.yaml` 时所有槽位是 no-op，行为与旧版一致。
+
+归档阶段还会读取 profile 的 `retention.archive` 清理过旧的历史 feature：默认保留最近 20 个以及 180 天内的记录（取并集），至少保留 5 个，`mode: ask`（删除前询问）。详见 [`flows/README.md`](flows/README.md) 的「归档保留策略」。
 
 ### 两级 MR 示例
 

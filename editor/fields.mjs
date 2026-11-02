@@ -22,8 +22,8 @@ export const FIELD_GROUPS = [
         en: { label: 'Archive directory', tip: 'Where documents are archived after the flow ends; usually the artifact directory without "current", e.g. docs/specs.' },
       },
       {
-        key: 'flow.checkpoints', label: '动作槽位', tip: 'git 动作可以插入的位置：stage_end（每个阶段结束时）和 finish（流程结束时）。不需要调整时保持默认。',
-        en: { label: 'Checkpoints', tip: 'Where git actions can run: stage_end (end of each stage) and finish (end of the flow). Keep the default unless needed.' },
+        key: 'flow.checkpoints', label: '动作槽位', tip: 'git 动作可以插入的位置：task_end（skill 阶段内每完成一个任务）、stage_end（每个阶段结束时）和 finish（流程结束时）。不需要调整时保持默认。',
+        en: { label: 'Checkpoints', tip: 'Where git actions can run: task_end (after each task inside a skill stage), stage_end (end of each stage), finish (end of the flow). Keep the default unless needed.' },
       },
     ],
   },
@@ -52,8 +52,8 @@ export const FIELD_GROUPS = [
         en: { label: 'Status gate', tip: 'Required frontmatter status value, e.g. approved, done, pass.' },
       },
       {
-        key: 'stage.approval', label: '人工确认', tip: '勾选后，这个阶段的产物必须由你明确确认，才能把状态改成通过。',
-        en: { label: 'Manual approval', tip: 'When checked, you must explicitly approve before the status can pass.' },
+        key: 'stage.approval', label: '人工确认', tip: '勾选后，这个阶段的产物必须由你明确确认。doc 阶段确认后改 status；skill 阶段先执行设计轮，确认后再重入实现轮。',
+        en: { label: 'Manual approval', tip: 'When checked, you must explicitly approve. For doc stages this changes status; for skill stages it runs a design round first, then re-enters implementation after approval.' },
       },
       {
         key: 'stage.hooks', label: '动作槽位', tip: '这个阶段要触发哪些 git 动作槽位，例如 stage_end；具体执行 commit 还是 push 由项目配置决定。',
@@ -90,6 +90,22 @@ export const FIELD_GROUPS = [
       {
         key: 'project.flows', label: '启用流程', tip: '这个项目允许使用哪些流程。没勾选的流程不会被 flow-runner 提供。',
         en: { label: 'Enabled flows', tip: 'Which flows this project may use. Flows not checked are not offered by flow-runner.' },
+      },
+      {
+        key: 'project.keepLatest', label: '保留最近 N 个', tip: '至少保留最近 N 个已归档 feature；不在最近 N 个且超过保留天数的记录才会进入清理候选。',
+        en: { label: 'Keep latest', tip: 'Keep at least the latest N archived features; only older records outside both this count and the day window become cleanup candidates.' },
+      },
+      {
+        key: 'project.keepDays', label: '保留最近 N 天', tip: '至少保留最近 N 天内归档的 feature；与 keep_latest 取并集。',
+        en: { label: 'Keep days', tip: 'Keep features archived within the last N days; combined with keep_latest.' },
+      },
+      {
+        key: 'project.minKeep', label: '至少保留 N 个', tip: '无论其他条件如何，已归档 feature 至少保留 N 个。',
+        en: { label: 'Minimum kept', tip: 'Always keep at least N archived features, regardless of other conditions.' },
+      },
+      {
+        key: 'project.retentionMode', label: '清理模式', tip: 'report = 只报告；ask = 列清单等你确认；auto = 按策略自动删除。',
+        en: { label: 'Cleanup mode', tip: 'report = only list candidates; ask = wait for your confirmation; auto = delete candidates automatically.' },
       },
       {
         key: 'project.pushRemote', label: '推送远端', tip: 'git push 的目标远端，通常是你的 fork，例如 origin。',

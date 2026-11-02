@@ -118,6 +118,58 @@ for (const [file, doc] of docs) {
   }
 }
 
+// 6. retention 配置校验（profile.yaml）。
+for (const [file, doc] of docs) {
+  if (path.basename(file) !== 'profile.yaml' || !doc) continue;
+  const retention = doc.retention?.archive;
+  if (!retention) continue;
+  for (const key of ['keep_latest', 'keep_days', 'min_keep']) {
+    if (retention[key] !== undefined && (!Number.isInteger(retention[key]) || retention[key] < 0)) {
+      errors.push(`${rel(file)}: retention.archive.${key} 必须是非负整数`);
+    }
+  }
+  if (retention.mode !== undefined && !['ask', 'report', 'auto'].includes(retention.mode)) {
+    errors.push(`${rel(file)}: retention.archive.mode 只能是 ask / report / auto`);
+  }
+}
+
+// 7. 流程/skill/阶段文档契约。
+for (const [file, doc] of docs) {
+  if (path.basename(file) !== 'flow.yaml' || !doc) continue;
+  const dir = path.dirname(file);
+  const flow = rel(dir);
+  if (doc.name === 'lite') {
+    const plan = (doc.stages || []).find((stage) => stage.id === 'plan');
+    if (!plan?.approval) errors.push(`${flow}: lite plan 阶段必须 approval: true`);
+  }
+  for (const stage of doc.stages || []) {
+    if (stage.type === 'skill' && stage.approval === true && stage.ref) {
+      const skillFile = path.join(root, 'skills', stage.ref, 'SKILL.md');
+      const text = fs.existsSync(skillFile) ? fs.readFileSync(skillFile, 'utf8') : '';
+      if (!text.includes('PLAN_ROUND=design') || !text.includes('PLAN_ROUND=implement')) {
+        errors.push(`${flow}:${stage.id}: approval skill 需要支持 PLAN_ROUND=design / implement`);
+      }
+    }
+    if (stage.type === 'doc' && stage.id === 'archive' && stage.ref) {
+      const stageFile = path.join(dir, stage.ref);
+      const text = fs.existsSync(stageFile) ? fs.readFileSync(stageFile, 'utf8') : '';
+      if (!text.includes('## 清理')) errors.push(`${rel(stageFile)}: 归档阶段缺少「## 清理」`);
+      if (!text.includes('retention.archive')) errors.push(`${rel(stageFile)}: 归档阶段缺少 retention.archive 说明`);
+    }
+    if (stage.type === 'doc' && stage.id === 'verify' && stage.ref) {
+      const stageFile = path.join(dir, stage.ref);
+      const text = fs.existsSync(stageFile) ? fs.readFileSync(stageFile, 'utf8') : '';
+      if (!text.includes('真实运行')) errors.push(`${rel(stageFile)}: 验证阶段缺少真实运行要求`);
+    }
+  }
+}
+
+const dfVerifyFile = path.join(root, 'skills', 'df-verify', 'SKILL.md');
+const dfVerifyText = fs.existsSync(dfVerifyFile) ? fs.readFileSync(dfVerifyFile, 'utf8') : '';
+if (!dfVerifyText.includes('行为变更必须真实运行')) {
+  errors.push('skills/df-verify/SKILL.md: 缺少行为变更真实运行要求');
+}
+
 if (errors.length) {
   console.error(`自检失败（${errors.length} 项）：`);
   for (const error of errors) console.error(`- ${error}`);

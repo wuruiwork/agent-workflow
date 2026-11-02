@@ -7,11 +7,12 @@
   - `task_end`（每完成一个未验证的中间步骤）→ `commit`
   - `stage_end` → `commit`
   - `finish`（完整功能验证通过、归档收尾）→ `push + mr`
+  - `retention.archive`：历史 feature 保留策略（默认最近 20 个 / 180 天 / 至少 5 个，mode: ask）
 - `workspaces/selfhost/`（缓存区，已被 `.gitignore` 忽略）：保存本项目修改过的 skill 和 flow：
   - `skills/df-implement`、`skills/flow-runner`、`skills/plan-code`：支持 `task_end` 槽位
   - `flows/doc-first`、`flows/hotfix`、`flows/lite`：声明 `task_end` 槽位
   - `profile.yaml`：项目 profile 的副本，便于在编辑器里打开缓存区
-- `.claude/skills/`、`.claude/flows/`：项目级覆盖，全部是真实目录副本，不使用符号链接（项目加载时符号链接不可靠）。修改过的 3 个 skill / 3 个 flow 来自缓存区，其余来自基础 `skills/`、`flows/`；在缓存区改完后用 `cp -R` 同步到 `.claude`。
+- `.claude/skills/`、`.claude/flows/`：项目级覆盖，全部是真实目录副本，不使用符号链接（项目加载时符号链接不可靠）。修改过的 skill / flow 优先从缓存区同步；缓存区没有的流程（如 dev-docs、ppt）直接从基础目录复制。统一用 `cp -R` 同步，不手改 `.claude/` 下的副本。
 - `.skillgate/done.yaml`：doc-first 阶段门禁，`tests-pass` = `npm test`。
 - `.claude/settings.json`、`.github/workflows/skillgate.yml`、`scripts/pre-push`：Claude Code / CI / 本地 push 三层门禁。
 - `scripts/check.mjs` + `npm test`：项目自检；`workspaces/` 不参与基础校验。

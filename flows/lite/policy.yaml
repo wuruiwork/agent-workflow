@@ -10,6 +10,8 @@ finishLine:
 timeout: 600000
 
 gates:
+  # plan 阶段 approval: true：设计轮 status: draft 不通过本门禁；
+  # 用户确认后实现轮完成 status: implemented 才推进。
   - id: plan-implemented
     type: file-contains
     file: docs/specs/current/00-plan.md
