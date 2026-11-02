@@ -5,7 +5,8 @@
   "description": "通用流程 + 项目级 git 动作 + 可视化流程编辑器",
   "scripts": {
     "editor": "node editor/server.mjs",
-    "help": "node editor/server.mjs --help"
+    "help": "node editor/server.mjs --help",
+    "docs:fields": "node scripts/gen-field-docs.mjs"
   },
   "engines": {
     "node": ">=18"

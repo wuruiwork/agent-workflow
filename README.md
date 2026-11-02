@@ -38,6 +38,7 @@ cd agent-workflow
 | `scripts/open-editor.sh` | 启动编辑器并自动打开浏览器 |
 | `scripts/workspace.sh` | 创建 / 列出 / 删除工作区（缓存区） |
 | `docs/glab-setup.md` | Gitee / GitLab / GitHub token、glab 安装与 `glab auth login` 完整说明 |
+| `docs/editor-fields.md` | 编辑器所有字段的中文说明（由 `editor/fields.mjs` 生成） |
 
 ## Claude Code 与 Codex
 
@@ -47,6 +48,11 @@ cd agent-workflow
 - Codex 的 skills 与 Claude 同格式（`SKILL.md` + `name`/`description`），复制过去即可用。
 - 插件（`document-skills`、`ppt-master`）只配置 Claude Code；Codex 使用复制过去的 skills。
 - 登录检查：Claude Code 自动检查 `claude` 可执行文件；Codex 使用 `codex login status`，未登录时提示 `codex login`。
+
+## 字段说明
+
+- 编辑器「字段说明」标签和所有悬浮提示都来自 `editor/fields.mjs`。
+- 完整中文文档：`docs/editor-fields.md`，修改说明后运行 `npm run docs:fields` 重新生成。
 
 ## 工作区（缓存区）
 
@@ -171,7 +177,8 @@ actions:
 - 每个阶段的 commit 类型。
 - 「项目配置」：启用流程、远端、分支正则、commit 类型、禁止提交路径、MR 目标（`always` / 领先提交数 / 空闲天数）。
 - 「Skills」：新建、导入文件夹、编辑、删除 skill；导入时会保留目录里的 `references/`、`scripts/` 等文件。所有写入都在当前工作区，仓库 skill 需先「复制到工作区」。
-- 「YAML 预览」：实时预览 `flow.yaml`、`profile.yaml`、生成的 `policy.yaml`；`tests-pass` 命令直接在表单里填，不需要手改 YAML。
+- 「字段说明」：每个字段的中文说明；鼠标移到任意字段标题上也会弹出同样的提示。
+- 「高级」：只读预览 `flow.yaml`、`profile.yaml`、生成的 `policy.yaml`，用于检查或下载，不需要手改；测试命令直接在表单里填。
 - 地址栏加 `#flow=doc-first` 可以直接定位到某个流程。
 
 新建或导入 skill 后，运行 `./install.sh --agents claude,codex --yes` 同步到 agent 目录。

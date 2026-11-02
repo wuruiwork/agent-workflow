@@ -1,6 +1,7 @@
 'use strict';
 
 import { generatePolicy } from '/policy.mjs';
+import { FIELD_GROUPS, FIELD_LABELS, FIELD_TIPS } from '/fields.mjs';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -9,6 +10,13 @@ const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
 const DUMP_OPTS = { noRefs: true, lineWidth: -1, sortKeys: false };
 const COMMIT_TYPES = ['', 'auto', 'feat', 'fix', 'docs', 'test', 'chore', 'refactor', 'build'];
 const ACTIONS = ['commit', 'push', 'mr'];
+const ACTION_LABELS = { commit: ['提交', 'binding.commit'], push: ['推送', 'binding.push'], mr: ['MR', 'binding.mr'] };
+
+// 带悬浮说明的字段标题
+function lbl(key, text) {
+  const name = text || FIELD_LABELS[key] || key;
+  return `<span class="tip" data-tip="${esc(FIELD_TIPS[key] || '')}">${esc(name)}</span>`;
+}
 
 const state = {
   repo: '',
@@ -235,11 +243,11 @@ function renderFlow() {
   const f = state.flow;
   meta.innerHTML = `
     ${state.workspace ? '' : '<p class="hint warn span-2">发布仓库只读：先在左侧选择或新建工作区，再编辑流程。</p>'}
-    <label>流程名<input class="input" value="${esc(f.name)}" disabled></label>
-    <label>产物目录<input class="input" data-meta="artifacts" value="${esc(f.artifacts || '')}"></label>
-    <label class="span-2">描述<input class="input" data-meta="description" value="${esc(f.description || '')}"></label>
-    <label>归档目录<input class="input" data-meta="archive" value="${esc(f.archive || '')}"></label>
-    <label>checkpoints（逗号分隔）<input class="input" data-meta="checkpoints" value="${esc((f.checkpoints || []).join(', '))}"></label>
+    <label>${lbl('flow.name', '流程名')}<input class="input" value="${esc(f.name)}" disabled></label>
+    <label>${lbl('flow.artifacts', '产物目录')}<input class="input" data-meta="artifacts" value="${esc(f.artifacts || '')}"></label>
+    <label class="span-2">${lbl('flow.description', '描述')}<input class="input" data-meta="description" value="${esc(f.description || '')}"></label>
+    <label>${lbl('flow.archive', '归档目录')}<input class="input" data-meta="archive" value="${esc(f.archive || '')}"></label>
+    <label>${lbl('flow.checkpoints', '动作槽位（逗号分隔）')}<input class="input" data-meta="checkpoints" value="${esc((f.checkpoints || []).join(', '))}"></label>
     <datalist id="gate-options">
       ${['approved', 'done', 'pass', 'confirmed', 'implemented', 'draft'].map((g) => `<option value="${g}">`).join('')}
     </datalist>
@@ -274,16 +282,17 @@ function stageCard(s, i) {
         <input class="input" data-field="id" value="${esc(s.id)}" spellcheck="false" title="stage id">
         <button class="icon" data-action="del-stage" title="删除阶段">×</button>
       </div>
-      <label>类型
+      <label>${lbl('stage.type', '类型')}
         <select data-field="type">
-          ${['doc', 'skill'].map((t) => `<option ${s.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+          ${['doc', 'skill'].map((t) => `<option value="${t}" ${s.type === t ? 'selected' : ''}>${t === 'doc' ? 'doc（文档阶段）' : 'skill（技能阶段）'}</option>`).join('')}
         </select>
       </label>
-      <label>ref${refField}</label>
-      <label>产物<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
-      <label>状态 gate<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
-      <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> 人工确认</label>
+      <label>${lbl('stage.ref', '引用')}${refField}</label>
+      <label>${lbl('stage.artifact', '产物文件')}<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
+      <label>${lbl('stage.gate', '状态门禁')}<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
+      <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> ${lbl('stage.approval', '人工确认')}</label>
       <div class="stage-hooks">
+        <span class="stage-hooks-title">${lbl('stage.hooks', '动作槽位')}</span>
         ${hooks.map((h) => `<label class="check"><input type="checkbox" data-hook="${esc(h)}" ${(s.hooks || []).includes(h) ? 'checked' : ''}> ${esc(h)}</label>`).join('')}
       </div>
       <div class="stage-actions">${bindingChips(s.id)}</div>
@@ -303,8 +312,23 @@ function renderInspector() {
   $('#tab-bindings').innerHTML = bindingsHtml();
   $('#tab-profile').innerHTML = profileHtml();
   $('#tab-skills').innerHTML = skillsHtml();
+  $('#tab-help').innerHTML = helpHtml();
   $('#tab-yaml').innerHTML = yamlHtml();
   updateTabs();
+}
+
+function helpHtml() {
+  return `
+    <p class="hint">鼠标移到任意字段标题上也会显示同样的说明。完整文档见仓库的 <code>docs/editor-fields.md</code>。</p>
+    ${FIELD_GROUPS.map((group) => `
+      <div class="help-group">
+        <h3>${esc(group.title)}</h3>
+        ${group.fields.map((f) => `
+          <div class="help-item">
+            <strong>${esc(f.label)}</strong>
+            <span>${esc(f.tip)}</span>
+          </div>`).join('')}
+      </div>`).join('')}`;
 }
 
 function updateTabs() {
@@ -322,16 +346,19 @@ function bindingsHtml() {
     const b = state.profile?.bindings?.[s.id] || {};
     const cells = hooks.map((h) => `
       <td><div class="checks">
-        ${ACTIONS.map((a) => `<label><input type="checkbox" data-bind="${esc(s.id)}|${esc(h)}|${a}" ${(b[h] || []).includes(a) ? 'checked' : ''}>${a}</label>`).join('')}
+        ${ACTIONS.map((a) => {
+          const [label, tipKey] = ACTION_LABELS[a];
+          return `<label class="tip" data-tip="${esc(FIELD_TIPS[tipKey] || '')}"><input type="checkbox" data-bind="${esc(s.id)}|${esc(h)}|${a}" ${(b[h] || []).includes(a) ? 'checked' : ''}>${label}</label>`;
+        }).join('')}
       </div></td>`).join('');
     const type = state.profile?.actions?.commit?.message?.type_by_stage?.[s.id] || '';
     const options = COMMIT_TYPES.map((v) => `<option value="${v}" ${v === type ? 'selected' : ''}>${v || '（默认）'}</option>`).join('');
     return `<tr><td><strong>${esc(s.id)}</strong></td><td><select class="input" data-bindtype="${esc(s.id)}">${options}</select></td>${cells}</tr>`;
   }).join('');
   return `
-    <p class="hint">勾选后写入 profile 的 <code>bindings</code>：阶段 × hook → 动作。流程只声明槽位，动作由项目决定。</p>
+    <p class="hint">勾选后，这个阶段在该槽位执行对应动作。动作的细节（远端、分支、MR 目标）在「项目配置」里设置。</p>
     <table>
-      <thead><tr><th>阶段</th><th>commit 类型</th>${hooks.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <thead><tr><th>${lbl('stage.id', '阶段')}</th><th>${lbl('binding.commitType', '提交类型')}</th>${hooks.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -391,17 +418,17 @@ function targetCard(t, i) {
         <strong>目标 ${i + 1}</strong>
         <button class="icon" data-action="del-target" title="删除目标">×</button>
       </div>
-      <label>id<input class="input" data-target="id" value="${esc(t.id || '')}"></label>
+      <label>${lbl('project.mrId', '目标标识')}<input class="input" data-target="id" value="${esc(t.id || '')}"></label>
       <div class="grid-2">
-        <label>head<input class="input" data-target="head" value="${esc(t.head || '')}" placeholder="current_branch / origin/main"></label>
-        <label>base<input class="input" data-target="base" value="${esc(t.base || '')}" placeholder="origin/main"></label>
+        <label>${lbl('project.mrHead', '源分支')}<input class="input" data-target="head" value="${esc(t.head || '')}" placeholder="current_branch / origin/main"></label>
+        <label>${lbl('project.mrBase', '目标分支')}<input class="input" data-target="base" value="${esc(t.base || '')}" placeholder="origin/main"></label>
       </div>
       <div class="target-when">
-        <label class="check"><input type="checkbox" data-target-when="always" ${w.always ? 'checked' : ''}> 总是</label>
+        <label class="check"><input type="checkbox" data-target-when="always" ${w.always ? 'checked' : ''}> ${lbl('project.mrWhen', '总是')}</label>
         <label>领先提交数<input class="input" type="number" min="1" data-target-when="ahead" value="${esc(w.ahead)}"></label>
         <label>主干空闲天数<input class="input" type="number" min="1" data-target-when="idle" value="${esc(w.idle)}"></label>
       </div>
-      <label>标题模板<input class="input" data-target="title" value="${esc(t.title || '')}" placeholder="chore: 同步（{ahead} 个提交）"></label>
+      <label>${lbl('project.mrTitle', '标题模板')}<input class="input" data-target="title" value="${esc(t.title || '')}" placeholder="chore: 同步（{ahead} 个提交）"></label>
     </div>`;
 }
 
@@ -419,7 +446,7 @@ function profileHtml() {
   return `
     <div class="profile-form">
       <section>
-        <h3>本项目启用的流程</h3>
+        <h3>${lbl('project.flows', '本项目启用的流程')}</h3>
         <div class="checks">
           ${state.flows.map((f) => `<label><input type="checkbox" data-flow-enabled="${esc(f.name)}" ${(p.flows || []).includes(f.name) ? 'checked' : ''}> ${esc(f.name)}</label>`).join('') || '<span class="hint">仓库里还没有流程</span>'}
         </div>
@@ -429,44 +456,44 @@ function profileHtml() {
       <section>
         <h3>远端与分支</h3>
         <div class="grid-2">
-          <label>push 远端<input class="input" data-p="git.push_remote" value="${esc(g.push_remote || '')}"></label>
-          <label>上游远端<input class="input" data-p="git.upstream_remote" value="${esc(g.upstream_remote || '')}"></label>
-          <label>默认分支<input class="input" data-p="git.base_branch" value="${esc(g.base_branch || '')}"></label>
-          <label>在默认分支上
+          <label>${lbl('project.pushRemote', '推送远端')}<input class="input" data-p="git.push_remote" value="${esc(g.push_remote || '')}"></label>
+          <label>${lbl('project.upstreamRemote', '上游远端')}<input class="input" data-p="git.upstream_remote" value="${esc(g.upstream_remote || '')}"></label>
+          <label>${lbl('project.baseBranch', '默认分支')}<input class="input" data-p="git.base_branch" value="${esc(g.base_branch || '')}"></label>
+          <label>${lbl('project.onBaseBranch', '在主分支上')}
             <select data-p="git.on_base_branch">
               <option value="refuse" ${g.on_base_branch === 'refuse' ? 'selected' : ''}>refuse（拒绝，先切分支）</option>
               <option value="create" ${g.on_base_branch === 'create' ? 'selected' : ''}>create（自动建分支）</option>
             </select>
           </label>
         </div>
-        <label>分支正则<input class="input" data-p="git.branch.pattern" value="${esc(br.pattern || '')}"></label>
-        <label>分支创建来源<input class="input" data-p="git.branch.create_from" value="${esc(br.create_from || '')}"></label>
+        <label>${lbl('project.branchPattern', '分支命名规则')}<input class="input" data-p="git.branch.pattern" value="${esc(br.pattern || '')}"></label>
+        <label>${lbl('project.createFrom', '分支来源')}<input class="input" data-p="git.branch.create_from" value="${esc(br.create_from || '')}"></label>
       </section>
 
       <section>
         <h3>提交</h3>
-        <label>允许的 commit 类型（逗号分隔）<input class="input" data-p="actions.commit.message.types" data-list="csv" value="${esc((msg.types || []).join(', '))}"></label>
-        <label>禁止提交的路径（每行一个）<textarea data-p="actions.commit.add.deny" data-list="lines">${esc((add.deny || []).join('\n'))}</textarea></label>
-        <label>scope 映射（每行 stage: scope）<textarea data-p="actions.commit.message.scope_by_stage" data-list="pairs">${esc(pairsText(msg.scope_by_stage))}</textarea></label>
+        <label>${lbl('project.commitTypes', '提交类型白名单（逗号分隔）')}<input class="input" data-p="actions.commit.message.types" data-list="csv" value="${esc((msg.types || []).join(', '))}"></label>
+        <label>${lbl('project.commitDeny', '禁止提交的路径（每行一个）')}<textarea data-p="actions.commit.add.deny" data-list="lines">${esc((add.deny || []).join('\n'))}</textarea></label>
+        <label>${lbl('project.scopeMap', 'scope 映射（每行 stage: scope）')}<textarea data-p="actions.commit.message.scope_by_stage" data-list="pairs">${esc(pairsText(msg.scope_by_stage))}</textarea></label>
       </section>
 
       <section>
         <h3>推送</h3>
         <div class="grid-2">
-          <label>远端<input class="input" data-p="actions.push.remote" value="${esc(push.remote || '')}"></label>
-          <label class="check"><input type="checkbox" data-p="actions.push.set_upstream" ${push.set_upstream ? 'checked' : ''}> 首次推送设置 upstream</label>
+          <label>${lbl('project.actionPushRemote', '推送远端')}<input class="input" data-p="actions.push.remote" value="${esc(push.remote || '')}"></label>
+          <label class="check">${lbl('project.setUpstream', '首次推送设置 upstream')}<input type="checkbox" data-p="actions.push.set_upstream" ${push.set_upstream ? 'checked' : ''}></label>
         </div>
       </section>
 
       <section>
-        <h3>MR 目标</h3>
+        <h3>${lbl('project.mrTargets', '合并请求目标')}</h3>
         ${targets.map(targetCard).join('') || '<p class="hint">还没有 MR 目标</p>'}
         <button class="btn ghost" data-action="add-target">＋ 添加目标</button>
       </section>
 
       <section>
-        <h3>MR 描述章节</h3>
-        <label>章节（逗号分隔）<input class="input" data-p="actions.mr.sections" data-list="csv" value="${esc((mr.sections || []).join(', '))}"></label>
+        <h3>${lbl('project.mrSections', 'MR 描述章节')}</h3>
+        <label>${lbl('project.mrSections', '章节（逗号分隔）')}<input class="input" data-p="actions.mr.sections" data-list="csv" value="${esc((mr.sections || []).join(', '))}"></label>
       </section>
     </div>`;
 }
@@ -508,13 +535,13 @@ function openSkillModal(skill, isNew) {
   overlay.innerHTML = `
     <div class="modal">
       <h3>${isNew ? '新建 skill' : `编辑 ${esc(skill.name)}`}</h3>
-      <label>名称（小写字母、数字、连字符）
+      <label>${lbl('skill.name', '名称（小写字母、数字、连字符）')}
         <input class="input" id="skill-name" value="${esc(skill.name || '')}" ${isNew ? '' : 'disabled'}>
       </label>
-      <label>描述（告诉 agent 何时使用）
+      <label>${lbl('skill.description', '描述（告诉 agent 何时使用）')}
         <textarea id="skill-desc" rows="3">${esc(skill.description || '')}</textarea>
       </label>
-      <label>SKILL.md 正文（Markdown）
+      <label>${lbl('skill.body', 'SKILL.md 正文（Markdown）')}
         <textarea id="skill-body" rows="16" spellcheck="false">${esc(skill.body || '')}</textarea>
       </label>
       <div class="modal-actions">
@@ -620,14 +647,15 @@ function yamlHtml() {
       <button class="btn" data-action="download-policy">下载 policy.yaml</button>
       <button class="btn primary" data-action="save-policy">保存 policy</button>
     </div>
-    <label>tests-pass 命令（留空使用模板占位；只有含 verify 阶段的流程会用到）
+    <p class="hint">${lbl('advanced.yaml', '高级预览')}：下面的内容由表单自动生成，只读，不需要手改；需要备份或排查时再下载。</p>
+    <label>${lbl('advanced.tests', '测试命令（验证阶段执行）')}
       <textarea id="policy-tests" rows="3" placeholder="例如：uv run pytest -q tests/env">${esc(state.policyTests)}</textarea>
     </label>
-    <h3>flow.yaml</h3>
+    <h3>流程定义</h3>
     <pre class="yaml" id="yaml-flow">${esc(flowYamlText())}</pre>
-    <h3>profile.yaml</h3>
+    <h3>项目配置</h3>
     <pre class="yaml" id="yaml-profile">${esc(profileYamlText())}</pre>
-    <h3>policy.yaml（由阶段生成，保存前请核对）</h3>
+    <h3>门禁策略（由阶段生成）</h3>
     <pre class="yaml" id="yaml-policy">${esc(policyText())}</pre>`;
 }
 
@@ -1016,4 +1044,44 @@ async function onInspectorClick(e) {
   }
 }
 
+function initTooltips() {
+  const tip = document.createElement('div');
+  tip.id = 'tooltip';
+  document.body.appendChild(tip);
+
+  const show = (el) => {
+    if (!el || !el.dataset.tip) return;
+    tip.textContent = el.dataset.tip;
+    tip.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    let top = r.bottom + 8;
+    if (top + t.height > window.innerHeight - 8) top = Math.max(8, r.top - t.height - 8);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - t.width - 8));
+    tip.style.top = `${top}px`;
+    tip.style.left = `${left}px`;
+  };
+  const hide = () => { tip.style.display = 'none'; };
+
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (!el) return;
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    show(el);
+  });
+  document.addEventListener('mouseout', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (!el) return;
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    hide();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest?.('[data-tip]');
+    if (el) show(el);
+  });
+  document.addEventListener('focusout', hide);
+  window.addEventListener('scroll', hide, true);
+}
+
+initTooltips();
 init();

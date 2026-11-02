@@ -141,8 +141,8 @@ textarea { font-family: var(--mono); font-size: 12px; min-height: 70px; resize: 
 
 .canvas-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-.tab { flex: 1; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 6px; cursor: pointer; color: var(--muted); }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.tab { flex: 1 1 auto; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; cursor: pointer; color: var(--muted); white-space: nowrap; }
 .tab.active { color: var(--text); background: var(--panel-2); border-color: var(--border); }
 
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -195,6 +195,21 @@ pre.yaml.error { border-color: var(--danger); color: var(--danger); }
 .modal textarea { font-family: var(--mono); }
 .modal-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
 .modal-actions .hint { margin-right: auto; color: var(--danger); }
+
+.tip { border-bottom: 1px dotted var(--muted); cursor: help; }
+#tooltip {
+  position: fixed; z-index: 200; max-width: 320px; display: none;
+  background: #0b0f14; border: 1px solid var(--accent); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.5; color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45); pointer-events: none; white-space: pre-line;
+}
+.stage-hooks-title { font-size: 12px; color: var(--muted); }
+
+.help-group h3 { margin: 16px 0 6px; font-size: 13px; }
+.help-group:first-of-type h3 { margin-top: 4px; }
+.help-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.help-item strong { font-size: 12px; }
+.help-item span { color: var(--muted); font-size: 12px; }
 
 @media (max-width: 1200px) {
   .layout { grid-template-columns: 200px minmax(0, 1fr); }
