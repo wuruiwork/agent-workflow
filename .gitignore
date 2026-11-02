@@ -4,3 +4,8 @@ node_modules/
 
 # 工作区（缓存区）：编辑器写这里，发布仓库保持干净
 workspaces/
+
+# 流程门禁的本地状态
+.skillgate/phase
+.skillgate/evidence/
+.claude/flows/profile.local.yaml

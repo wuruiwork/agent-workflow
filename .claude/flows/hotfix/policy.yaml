@@ -1,0 +1,86 @@
+# hotfix 流程的 skillgate 策略。
+# 复制到目标项目的 .skillgate/done.yaml 后生效。
+# 产物 gate 用 when.changed 限定，允许阶段边界提前 push；见 doc-first/policy.yaml。
+
+name: hotfix
+
+finishLine:
+  - "git push"
+
+timeout: 600000
+
+gates:
+  - id: repro-confirmed
+    type: file-contains
+    file: docs/specs/current/00-repro.md
+    pattern: "status: confirmed"
+    when:
+      changed: ["docs/specs/*/00-repro.md"]
+
+  - id: tasks-approved
+    type: file-contains
+    file: docs/specs/current/20-tasks.md
+    pattern: "status: approved"
+    when:
+      changed: ["docs/specs/*/20-tasks.md"]
+
+  - id: impl-done
+    type: file-contains
+    file: docs/specs/current/30-impl.md
+    pattern: "status: done"
+    when:
+      changed: ["docs/specs/*/30-impl.md"]
+
+  - id: verify-pass
+    type: file-contains
+    file: docs/specs/current/40-verify.md
+    pattern: "status: pass"
+    when:
+      changed: ["docs/specs/*/40-verify.md"]
+
+  - id: tests-pass
+    type: command
+    timeout: 540000
+    run: |
+      sh -c 'echo "TODO: 把 .skillgate/done.yaml 的 tests-pass 改成项目测试命令"; exit 1'
+    when:
+      changed: ["docs/specs/*/40-verify.md"]
+
+  # 文档治理：先以 warn 接入；清理后把 level: warn 改成 block。
+  - id: instruction-sync
+    type: instruction-sync
+    level: warn
+
+  - id: instruction-refs
+    type: instruction-refs
+    level: warn
+
+  - id: archive-done
+    type: file-exists
+    file: docs/specs/current/40-verify.md
+    when:
+      changed: ["docs/specs/INDEX.md"]
+
+  - id: archive-indexed
+    type: command
+    run: |
+      sh -c 'test -L docs/specs/current && grep -q "$(basename "$(readlink docs/specs/current)")" docs/specs/INDEX.md'
+    when:
+      changed: ["docs/specs/INDEX.md"]
+
+  # 只有分支里出现流程产物时才启用阶段门禁。
+  - id: phases
+    type: phase
+    when:
+      changed: ["docs/specs/**"]
+    phases:
+      - id: reproduce
+        requires: [repro-confirmed]
+      - id: tasks
+        requires: [tasks-approved]
+      - id: implement
+        requires: [impl-done]
+      - id: verify
+        requires: [verify-pass, tests-pass]
+      - id: archive
+        requires: [archive-done, archive-indexed]

@@ -1,0 +1,69 @@
+# lite 流程的 skillgate 策略。
+# 复制到目标项目的 .skillgate/done.yaml 后生效。
+# 产物 gate 用 when.changed 限定，允许阶段边界提前 push；见 doc-first/policy.yaml。
+
+name: lite
+
+finishLine:
+  - "git push"
+
+timeout: 600000
+
+gates:
+  - id: plan-implemented
+    type: file-contains
+    file: docs/specs/current/00-plan.md
+    pattern: "status: implemented"
+    when:
+      changed: ["docs/specs/*/00-plan.md"]
+
+  - id: verify-pass
+    type: file-contains
+    file: docs/specs/current/40-verify.md
+    pattern: "status: pass"
+    when:
+      changed: ["docs/specs/*/40-verify.md"]
+
+  # 必须改成项目自己的测试命令。默认故意失败，避免没配置就放行。
+  - id: tests-pass
+    type: command
+    timeout: 540000
+    run: |
+      sh -c 'echo "TODO: 把 .skillgate/done.yaml 的 tests-pass 改成项目测试命令"; exit 1'
+    when:
+      changed: ["docs/specs/*/40-verify.md"]
+
+  # 文档治理：先以 warn 接入；清理后把 level: warn 改成 block。
+  - id: instruction-sync
+    type: instruction-sync
+    level: warn
+
+  - id: instruction-refs
+    type: instruction-refs
+    level: warn
+
+  - id: archive-done
+    type: file-exists
+    file: docs/specs/current/40-verify.md
+    when:
+      changed: ["docs/specs/INDEX.md"]
+
+  - id: archive-indexed
+    type: command
+    run: |
+      sh -c 'test -L docs/specs/current && grep -q "$(basename "$(readlink docs/specs/current)")" docs/specs/INDEX.md'
+    when:
+      changed: ["docs/specs/INDEX.md"]
+
+  # 只有分支里出现流程产物时才启用阶段门禁。
+  - id: phases
+    type: phase
+    when:
+      changed: ["docs/specs/**"]
+    phases:
+      - id: plan
+        requires: [plan-implemented]
+      - id: verify
+        requires: [verify-pass, tests-pass]
+      - id: archive
+        requires: [archive-done, archive-indexed]

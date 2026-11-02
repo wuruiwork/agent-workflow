@@ -370,6 +370,25 @@ sync_tree() {
   echo "$label -> $dest"
 }
 
+# 工作区叠加必须覆盖基础版本，并且落成真实副本：
+# - 同名条目总是覆盖，否则 --workspace 对已安装的 skill/flow 不生效；
+# - 即使 --link 也复制而不是建符号链接，避免项目/agent 加载时拿到悬空链接。
+overlay_tree() {
+  local src="$1" dest="$2" label="$3" item name target
+  [ -d "$src" ] || return 0
+  run mkdir -p "$dest"
+  for item in "$src"/*; do
+    [ -e "$item" ] || continue
+    name="$(basename "$item")"
+    target="$dest/$name"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+      run rm -rf "$target"
+    fi
+    run cp -R "$item" "$target"
+  done
+  echo "$label -> $dest"
+}
+
 target_dirs() {
   local kind="$1" dirs=""
   if has_agent claude; then dirs+=" $CLAUDE_DIR/$kind"; fi
@@ -400,13 +419,13 @@ if [ -n "$WORKSPACE" ]; then
   if [ "$INSTALL_SKILLS" = 1 ] && [ -d "$WORKSPACE_DIR/skills" ]; then
     say "叠加工作区 skills（$WORKSPACE）"
     for dest in $(target_dirs skills); do
-      sync_tree "$WORKSPACE_DIR/skills" "$dest" "workspace skills"
+      overlay_tree "$WORKSPACE_DIR/skills" "$dest" "workspace skills"
     done
   fi
   if [ "$INSTALL_FLOWS" = 1 ] && [ -d "$WORKSPACE_DIR/flows" ]; then
     say "叠加工作区 flows（$WORKSPACE）"
     for dest in $(target_dirs flows); do
-      sync_tree "$WORKSPACE_DIR/flows" "$dest" "workspace flows"
+      overlay_tree "$WORKSPACE_DIR/flows" "$dest" "workspace flows"
     done
   fi
 fi

@@ -1,0 +1,79 @@
+# dev-docs 流程的 skillgate 策略。
+# 复制到目标项目的 .skillgate/done.yaml 后生效。
+# 产物 gate 用 when.changed 限定，允许阶段边界提前 push；见 doc-first/policy.yaml。
+
+name: dev-docs
+
+finishLine:
+  - "git push"
+
+timeout: 600000
+
+gates:
+  - id: brief-approved
+    type: file-contains
+    file: docs/deliverables/current/00-brief.md
+    pattern: "status: approved"
+    when:
+      changed: ["docs/deliverables/*/00-brief.md"]
+
+  - id: draft-approved
+    type: file-contains
+    file: docs/deliverables/current/10-draft.md
+    pattern: "status: approved"
+    when:
+      changed: ["docs/deliverables/*/10-draft.md"]
+
+  - id: review-pass
+    type: file-contains
+    file: docs/deliverables/current/20-review.md
+    pattern: "status: pass"
+    when:
+      changed: ["docs/deliverables/*/20-review.md"]
+
+  - id: docx-exists
+    type: file-exists
+    file: docs/deliverables/current/30-doc.docx
+    when:
+      changed: ["docs/deliverables/*/30-doc.docx"]
+
+  - id: pdf-exists
+    type: file-exists
+    file: docs/deliverables/current/40-doc.pdf
+    when:
+      changed: ["docs/deliverables/*/40-doc.pdf"]
+
+  # 文档治理：先以 warn 接入；清理后把 level: warn 改成 block。
+  - id: instruction-sync
+    type: instruction-sync
+    level: warn
+
+  - id: instruction-refs
+    type: instruction-refs
+    level: warn
+
+  - id: archive-indexed
+    type: command
+    run: |
+      sh -c 'test -L docs/deliverables/current && grep -q "$(basename "$(readlink docs/deliverables/current)")" docs/deliverables/INDEX.md'
+    when:
+      changed: ["docs/deliverables/INDEX.md"]
+
+  # 只有分支里出现流程产物时才启用阶段门禁。
+  - id: phases
+    type: phase
+    when:
+      changed: ["docs/deliverables/**"]
+    phases:
+      - id: brief
+        requires: [brief-approved]
+      - id: draft
+        requires: [draft-approved]
+      - id: review
+        requires: [review-pass]
+      - id: build
+        requires: [docx-exists]
+      - id: export
+        requires: [pdf-exists]
+      - id: archive
+        requires: [archive-indexed]
