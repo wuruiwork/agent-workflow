@@ -1,0 +1,97 @@
+# ppt 流程的 skillgate 策略。
+# 复制到目标项目的 .skillgate/done.yaml 后生效。
+# 产物 gate 用 when.changed 限定，允许阶段边界提前 push；见 doc-first/policy.yaml。
+
+name: ppt
+
+finishLine:
+  - "git push"
+
+timeout: 600000
+
+gates:
+  - id: brief-approved
+    type: file-contains
+    file: presentations/current/00-brief.md
+    pattern: "status: approved"
+    when:
+      changed: ["presentations/*/00-brief.md"]
+
+  - id: outline-approved
+    type: file-contains
+    file: presentations/current/10-outline.md
+    pattern: "status: approved"
+    when:
+      changed: ["presentations/*/10-outline.md"]
+
+  - id: content-done
+    type: file-contains
+    file: presentations/current/20-content.md
+    pattern: "status: done"
+    when:
+      changed: ["presentations/*/20-content.md"]
+
+  - id: design-approved
+    type: file-contains
+    file: presentations/current/30-design.md
+    pattern: "status: approved"
+    when:
+      changed: ["presentations/*/30-design.md"]
+
+  - id: deck-exists
+    type: file-exists
+    file: presentations/current/40-deck.pptx
+    when:
+      changed: ["presentations/*/40-deck.pptx"]
+
+  - id: review-pass
+    type: file-contains
+    file: presentations/current/50-review.md
+    pattern: "status: pass"
+    when:
+      changed: ["presentations/*/50-review.md"]
+
+  - id: pdf-exists
+    type: file-exists
+    file: presentations/current/60-deck.pdf
+    when:
+      changed: ["presentations/*/60-deck.pdf"]
+
+  # 文档治理：先以 warn 接入；清理后把 level: warn 改成 block。
+  - id: instruction-sync
+    type: instruction-sync
+    level: warn
+
+  - id: instruction-refs
+    type: instruction-refs
+    level: warn
+
+  - id: archive-indexed
+    type: command
+    run: |
+      sh -c 'test -L presentations/current && grep -q "$(basename "$(readlink presentations/current)")" presentations/INDEX.md'
+    when:
+      changed: ["presentations/INDEX.md"]
+
+  # 只有分支里出现流程产物时才启用阶段门禁。
+  - id: phases
+    type: phase
+    when:
+      changed: ["presentations/**"]
+    phases:
+      - id: brief
+        requires: [brief-approved]
+      - id: outline
+        requires: [outline-approved]
+      - id: content
+        requires: [content-done]
+      - id: design
+        requires: [design-approved]
+      - id: build
+        requires: [deck-exists]
+      - id: review
+        requires: [review-pass]
+      - id: export
+        requires: [pdf-exists]
+      - id: archive
+        requires: [archive-indexed]

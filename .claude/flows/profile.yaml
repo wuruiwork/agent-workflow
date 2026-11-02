@@ -1,0 +1,83 @@
+# 本仓库（agent-workflow 框架自身）的 git 动作档案。
+# flow-runner / git-action 读取此文件，把流程阶段槽位解析成提交、推送、MR 行为。
+# 本机差异写入 profile.local.yaml（不入库）。
+
+version: 1
+
+# 本仓库自用流程。dev-docs / ppt 是给交付物项目用的，这里不启用。
+flows: [doc-first, lite, hotfix]
+
+git:
+  provider: github
+  push_remote: origin
+  base_branch: main
+  protected: [main]
+  on_base_branch: create      # 在 main 上提交时自动切换新分支
+  branch:
+    pattern: '^(feat|fix|docs|test|chore|refactor)/[a-z0-9._-]+$'
+    create_from: origin/main
+
+actions:
+  commit:
+    add:
+      deny:
+        - ".env"
+        - ".env.*"
+        - "*.key"
+        - "*.pem"
+        - ".tmp/"
+        - ".skillgate/phase"
+        - ".skillgate/evidence/"
+        - ".claude/flows/profile.local.yaml"
+    message:
+      format: conventional
+      language: zh
+      type_by_stage:
+        brief: docs
+        design: docs
+        tasks: docs
+        implement: auto
+        review: chore
+        verify: test
+        archive: docs
+      scope_by_stage:
+        brief: spec
+        design: spec
+        tasks: spec
+        verify: test
+        archive: spec
+  push:
+    remote: origin
+    set_upstream: true
+    forbid_force: true
+  mr:
+    tool: gh
+    # 走流程时从当前 feature 的产物提取 MR 描述；没有产物则标注「未提供」。
+    description_from: docs/specs/current
+    targets:
+      - id: review
+        head: current_branch
+        base: origin/main
+        when: always
+    sections: [变更目的, 影响范围, 测试结果, 关联 Issue, 脱敏情况]
+
+# 阶段 × 槽位 -> 动作。
+# 策略：每完成一个未验证的中间步骤（任务）就 commit；只有完整功能验证通过、归档收尾时才 push + mr。
+# task_end 只允许 commit，push / mr 绑定在 task_end 会被 flow-runner 拒绝。
+bindings:
+  brief:     { stage_end: [commit] }
+  design:    { stage_end: [commit] }
+  tasks:     { stage_end: [commit] }
+  implement: { task_end: [commit], stage_end: [commit] }
+  review:    { stage_end: [commit] }
+  verify:    { stage_end: [commit] }
+  archive:   { stage_end: [commit], finish: [push, mr] }
+
+  # 其它流程的独有阶段
+  plan:      { stage_end: [commit] }
+  reproduce: { stage_end: [commit] }
+  draft:     { stage_end: [commit] }
+  outline:   { stage_end: [commit] }
+  content:   { stage_end: [commit] }
+  build:     { stage_end: [commit] }
+  export:    { stage_end: [commit] }

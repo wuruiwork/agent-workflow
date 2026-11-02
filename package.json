@@ -6,7 +6,8 @@
   "scripts": {
     "editor": "node editor/server.mjs",
     "help": "node editor/server.mjs --help",
-    "docs:fields": "node scripts/gen-field-docs.mjs"
+    "docs:fields": "node scripts/gen-field-docs.mjs",
+    "test": "node scripts/check.mjs"
   },
   "engines": {
     "node": ">=18"
