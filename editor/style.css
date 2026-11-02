@@ -41,6 +41,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .muted { color: var(--muted); }
 .env { flex: 1; color: var(--muted); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
+.lang-select { width: auto; padding: 4px 8px; }
 
 .status { font-size: 12px; color: var(--muted); min-width: 90px; text-align: right; }
 .status.ok { color: var(--accent-2); }

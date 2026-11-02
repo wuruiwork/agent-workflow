@@ -1,7 +1,8 @@
 'use strict';
 
 import { generatePolicy } from '/policy.mjs';
-import { FIELD_GROUPS, FIELD_LABELS, FIELD_TIPS } from '/fields.mjs';
+import { translate } from '/i18n.mjs';
+import { FIELD_GROUPS, FIELD_LABELS, FIELD_LABELS_EN, FIELD_TIPS, FIELD_TIPS_EN } from '/fields.mjs';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -10,12 +11,18 @@ const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
 const DUMP_OPTS = { noRefs: true, lineWidth: -1, sortKeys: false };
 const COMMIT_TYPES = ['', 'auto', 'feat', 'fix', 'docs', 'test', 'chore', 'refactor', 'build'];
 const ACTIONS = ['commit', 'push', 'mr'];
-const ACTION_LABELS = { commit: ['提交', 'binding.commit'], push: ['推送', 'binding.push'], mr: ['MR', 'binding.mr'] };
+const ACTION_I18N = { commit: 'action.commit', push: 'action.push', mr: 'action.mr' };
+const ACTION_TIP_KEY = { commit: 'binding.commit', push: 'binding.push', mr: 'binding.mr' };
 
-// 带悬浮说明的字段标题
-function lbl(key, text) {
-  const name = text || FIELD_LABELS[key] || key;
-  return `<span class="tip" data-tip="${esc(FIELD_TIPS[key] || '')}">${esc(name)}</span>`;
+const L = (key, vars) => translate(state.lang, key, vars);
+
+// 带悬浮说明的字段标题，按当前语言显示
+function lbl(key, zhText, enText) {
+  const text = state.lang === 'zh'
+    ? (zhText || FIELD_LABELS[key] || key)
+    : (enText || FIELD_LABELS_EN[key] || FIELD_LABELS[key] || key);
+  const tip = state.lang === 'zh' ? FIELD_TIPS[key] : FIELD_TIPS_EN[key];
+  return `<span class="tip" data-tip="${esc(tip || '')}">${esc(text)}</span>`;
 }
 
 const state = {
@@ -35,6 +42,15 @@ const state = {
   workspacesDir: '',
   tab: 'bindings',
   dirty: false,
+  lang: (() => {
+    try {
+      const fromQuery = new URLSearchParams(location.search).get('lang');
+      if (fromQuery === 'zh' || fromQuery === 'en') return fromQuery;
+      return localStorage.getItem('agent-workflow-lang') || 'en';
+    } catch {
+      return 'en';
+    }
+  })(),
 };
 
 /* ---------------- 基础工具 ---------------- */
@@ -54,7 +70,7 @@ function setStatus(text, kind = '') {
   const el = $('#status');
   el.textContent = text;
   el.className = `status ${kind}`;
-  if (text) setTimeout(() => { if (el.textContent === text) el.textContent = state.dirty ? '未保存' : ''; }, 3000);
+  if (text) setTimeout(() => { if (el.textContent === text) el.textContent = state.dirty ? L('status.dirty') : ''; }, 3000);
 }
 
 function markDirty() {
@@ -63,7 +79,7 @@ function markDirty() {
 }
 
 function updateDirty() {
-  if (state.dirty) { $('#status').textContent = '未保存'; $('#status').className = 'status'; }
+  if (state.dirty) { $('#status').textContent = L('status.dirty'); $('#status').className = 'status'; }
 }
 
 function getPath(obj, path) {
@@ -199,6 +215,7 @@ function selectFlow(name) {
 /* ---------------- 渲染 ---------------- */
 
 function renderAll() {
+  applyLang();
   renderEnv();
   renderWorkspaceSelect();
   renderFlowList();
@@ -207,18 +224,29 @@ function renderAll() {
   updateDirty();
 }
 
+function applyLang() {
+  document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : 'en';
+  document.title = state.lang === 'zh' ? '流程编辑器 · agent-workflow' : 'Workflow editor · agent-workflow';
+  $$('[data-i18n]').forEach((el) => { el.textContent = L(el.dataset.i18n); });
+  $$('[data-i18n-html]').forEach((el) => { el.innerHTML = L(el.dataset.i18nHtml); });
+  const sel = $('#lang-select');
+  if (sel) sel.value = state.lang;
+}
+
 function renderEnv() {
-  const ws = state.workspace ? `工作区 ${state.workspace}` : '未选择工作区（只读）';
-  $('#env').textContent = `仓库 ${state.repo} · ${ws}${state.project ? ` · 项目 ${state.project}` : ''}`;
-  $('#project-info').textContent = state.project || '（未连接）';
+  const ws = state.workspace ? `${L('side.workspaceBadge')}: ${state.workspace}` : L('side.noWorkspace');
+  const parts = [`repo ${state.repo}`, ws];
+  if (state.project) parts.push(`${L('side.project')}: ${state.project}`);
+  $('#env').textContent = parts.join(' · ');
+  $('#project-info').textContent = state.project || L('side.notConnected');
   if (state.project) $('#project-input').value = state.project;
 }
 
 function renderWorkspaceSelect() {
   const sel = $('#workspace-select');
   if (!sel) return;
-  sel.innerHTML = `<option value="">（未选择，只读）</option>` + state.workspaces.map((w) =>
-    `<option value="${esc(w.name)}" ${w.name === state.workspace ? 'selected' : ''}>${esc(w.name)}（${w.skills} skills / ${w.flows} flows）</option>`
+  sel.innerHTML = `<option value="">${esc(L('side.noWorkspace'))}</option>` + state.workspaces.map((w) =>
+    `<option value="${esc(w.name)}" ${w.name === state.workspace ? 'selected' : ''}>${esc(w.name)} (${w.skills} skills / ${w.flows} flows)</option>`
   ).join('');
 }
 
@@ -226,28 +254,28 @@ function renderFlowList() {
   $('#flow-list').innerHTML = state.flows.length
     ? state.flows.map((f) => `
       <div class="flow-item ${f.name === state.flowName ? 'active' : ''}" data-flow="${esc(f.name)}">
-        <span>${esc(f.name)} ${f.source === 'workspace' ? '<span class="chip">工作区</span>' : ''}</span>
-        ${f.error ? `<span class="err" title="${esc(f.error)}">解析失败</span>` : ''}
+        <span>${esc(f.name)} ${f.source === 'workspace' ? `<span class="chip">${esc(L('side.workspaceBadge'))}</span>` : ''}</span>
+        ${f.error ? `<span class="err" title="${esc(f.error)}">${esc(L('side.parseError'))}</span>` : ''}
       </div>`).join('')
-    : '<p class="hint">仓库里还没有流程</p>';
+    : `<p class="hint">${esc(L('side.noFlows'))}</p>`;
 }
 
 function renderFlow() {
   const meta = $('#flow-meta');
   const stages = $('#stages');
   if (!state.flow) {
-    meta.innerHTML = '<p class="hint">选择左侧流程，或新建一个。</p>';
+    meta.innerHTML = `<p class="hint">${esc(L('canvas.noFlow'))}</p>`;
     stages.innerHTML = '';
     return;
   }
   const f = state.flow;
   meta.innerHTML = `
-    ${state.workspace ? '' : '<p class="hint warn span-2">发布仓库只读：先在左侧选择或新建工作区，再编辑流程。</p>'}
-    <label>${lbl('flow.name', '流程名')}<input class="input" value="${esc(f.name)}" disabled></label>
-    <label>${lbl('flow.artifacts', '产物目录')}<input class="input" data-meta="artifacts" value="${esc(f.artifacts || '')}"></label>
-    <label class="span-2">${lbl('flow.description', '描述')}<input class="input" data-meta="description" value="${esc(f.description || '')}"></label>
-    <label>${lbl('flow.archive', '归档目录')}<input class="input" data-meta="archive" value="${esc(f.archive || '')}"></label>
-    <label>${lbl('flow.checkpoints', '动作槽位（逗号分隔）')}<input class="input" data-meta="checkpoints" value="${esc((f.checkpoints || []).join(', '))}"></label>
+    ${state.workspace ? '' : `<p class="hint warn span-2">${esc(L('canvas.readonlyBanner'))}</p>`}
+    <label>${lbl('flow.name', '流程名', 'Flow name')}<input class="input" value="${esc(f.name)}" disabled></label>
+    <label>${lbl('flow.artifacts', '产物目录', 'Artifact directory')}<input class="input" data-meta="artifacts" value="${esc(f.artifacts || '')}"></label>
+    <label class="span-2">${lbl('flow.description', '描述', 'Description')}<input class="input" data-meta="description" value="${esc(f.description || '')}"></label>
+    <label>${lbl('flow.archive', '归档目录', 'Archive directory')}<input class="input" data-meta="archive" value="${esc(f.archive || '')}"></label>
+    <label>${lbl('flow.checkpoints', '动作槽位（逗号分隔）', 'Checkpoints (comma separated)')}<input class="input" data-meta="checkpoints" value="${esc((f.checkpoints || []).join(', '))}"></label>
     <datalist id="gate-options">
       ${['approved', 'done', 'pass', 'confirmed', 'implemented', 'draft'].map((g) => `<option value="${g}">`).join('')}
     </datalist>
@@ -265,9 +293,10 @@ function skillOptions(current) {
     .map((n) => `<option value="${esc(n)}" ${n === current ? 'selected' : ''}>${esc(n)}</option>`)
     .join('');
   if (current && !names.includes(current)) {
-    return `<option value="${esc(current)}" selected>${esc(current)}（未在仓库中）</option>${options}`;
+    const suffix = state.lang === 'zh' ? '（未在仓库中）' : ' (not in repo)';
+    return `<option value="${esc(current)}" selected>${esc(current + suffix)}</option>${options}`;
   }
-  if (!current) return `<option value="" selected>（选择 skill）</option>${options}`;
+  if (!current) return `<option value="" selected>${esc(L('canvas.selectSkill'))}</option>${options}`;
   return options || `<option value="${esc(current)}" selected>${esc(current)}</option>`;
 }
 
@@ -280,19 +309,19 @@ function stageCard(s, i) {
     <div class="stage-card" draggable="true" data-index="${i}">
       <div class="stage-head">
         <input class="input" data-field="id" value="${esc(s.id)}" spellcheck="false" title="stage id">
-        <button class="icon" data-action="del-stage" title="删除阶段">×</button>
+        <button class="icon" data-action="del-stage" title="${esc(L('stage.delete'))}">×</button>
       </div>
-      <label>${lbl('stage.type', '类型')}
+      <label>${lbl('stage.type', '类型', 'Type')}
         <select data-field="type">
-          ${['doc', 'skill'].map((t) => `<option value="${t}" ${s.type === t ? 'selected' : ''}>${t === 'doc' ? 'doc（文档阶段）' : 'skill（技能阶段）'}</option>`).join('')}
+          ${['doc', 'skill'].map((t) => `<option value="${t}" ${s.type === t ? 'selected' : ''}>${esc(L(t === 'doc' ? 'stage.typeDoc' : 'stage.typeSkill'))}</option>`).join('')}
         </select>
       </label>
-      <label>${lbl('stage.ref', '引用')}${refField}</label>
-      <label>${lbl('stage.artifact', '产物文件')}<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
-      <label>${lbl('stage.gate', '状态门禁')}<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
-      <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> ${lbl('stage.approval', '人工确认')}</label>
+      <label>${lbl('stage.ref', '引用', 'Reference')}${refField}</label>
+      <label>${lbl('stage.artifact', '产物文件', 'Artifact file')}<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
+      <label>${lbl('stage.gate', '状态门禁', 'Status gate')}<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
+      <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> ${lbl('stage.approval', '人工确认', 'Manual approval')}</label>
       <div class="stage-hooks">
-        <span class="stage-hooks-title">${lbl('stage.hooks', '动作槽位')}</span>
+        <span class="stage-hooks-title">${lbl('stage.hooks', '动作槽位', 'Checkpoints')}</span>
         ${hooks.map((h) => `<label class="check"><input type="checkbox" data-hook="${esc(h)}" ${(s.hooks || []).includes(h) ? 'checked' : ''}> ${esc(h)}</label>`).join('')}
       </div>
       <div class="stage-actions">${bindingChips(s.id)}</div>
@@ -305,7 +334,7 @@ function bindingChips(stageId) {
   for (const [hook, actions] of Object.entries(b)) {
     for (const a of actions || []) chips.push(`<span class="chip ${a === 'push' ? 'push' : a === 'mr' ? 'mr' : ''}">${esc(hook)} · ${esc(a)}</span>`);
   }
-  return chips.join('') || '<span class="hint">无 git 动作</span>';
+  return chips.join('') || `<span class="hint">${esc(L('bindings.none'))}</span>`;
 }
 
 function renderInspector() {
@@ -319,16 +348,23 @@ function renderInspector() {
 
 function helpHtml() {
   return `
-    <p class="hint">鼠标移到任意字段标题上也会显示同样的说明。完整文档见仓库的 <code>docs/editor-fields.md</code>。</p>
-    ${FIELD_GROUPS.map((group) => `
-      <div class="help-group">
-        <h3>${esc(group.title)}</h3>
-        ${group.fields.map((f) => `
-          <div class="help-item">
-            <strong>${esc(f.label)}</strong>
-            <span>${esc(f.tip)}</span>
-          </div>`).join('')}
-      </div>`).join('')}`;
+    <p class="hint">${L('help.hint')}</p>
+    ${FIELD_GROUPS.map((group) => {
+      const title = state.lang === 'zh' ? group.title : (group.title_en || group.title);
+      return `
+        <div class="help-group">
+          <h3>${esc(title)}</h3>
+          ${group.fields.map((f) => {
+            const label = state.lang === 'zh' ? f.label : (f.en?.label || f.label);
+            const tip = state.lang === 'zh' ? f.tip : (f.en?.tip || f.tip);
+            return `
+              <div class="help-item">
+                <strong>${esc(label)}</strong>
+                <span>${esc(tip)}</span>
+              </div>`;
+          }).join('')}
+        </div>`;
+    }).join('')}`;
 }
 
 function updateTabs() {
@@ -339,7 +375,7 @@ function updateTabs() {
 /* ---------------- 阶段动作 ---------------- */
 
 function bindingsHtml() {
-  if (!state.flow) return '<p class="hint">先选择一个流程。</p>';
+  if (!state.flow) return `<p class="hint">${esc(L('bindings.selectFlow'))}</p>`;
   const stages = state.flow.stages || [];
   const hooks = state.flow.checkpoints || [];
   const rows = stages.map((s) => {
@@ -347,18 +383,19 @@ function bindingsHtml() {
     const cells = hooks.map((h) => `
       <td><div class="checks">
         ${ACTIONS.map((a) => {
-          const [label, tipKey] = ACTION_LABELS[a];
-          return `<label class="tip" data-tip="${esc(FIELD_TIPS[tipKey] || '')}"><input type="checkbox" data-bind="${esc(s.id)}|${esc(h)}|${a}" ${(b[h] || []).includes(a) ? 'checked' : ''}>${label}</label>`;
+          const tipKey = ACTION_TIP_KEY[a];
+          const tip = state.lang === 'zh' ? FIELD_TIPS[tipKey] : FIELD_TIPS_EN[tipKey];
+          return `<label class="tip" data-tip="${esc(tip || '')}"><input type="checkbox" data-bind="${esc(s.id)}|${esc(h)}|${a}" ${(b[h] || []).includes(a) ? 'checked' : ''}>${esc(L(ACTION_I18N[a]))}</label>`;
         }).join('')}
       </div></td>`).join('');
     const type = state.profile?.actions?.commit?.message?.type_by_stage?.[s.id] || '';
-    const options = COMMIT_TYPES.map((v) => `<option value="${v}" ${v === type ? 'selected' : ''}>${v || '（默认）'}</option>`).join('');
+    const options = COMMIT_TYPES.map((v) => `<option value="${v}" ${v === type ? 'selected' : ''}>${esc(v || L('bindings.defaultType'))}</option>`).join('');
     return `<tr><td><strong>${esc(s.id)}</strong></td><td><select class="input" data-bindtype="${esc(s.id)}">${options}</select></td>${cells}</tr>`;
   }).join('');
   return `
-    <p class="hint">勾选后，这个阶段在该槽位执行对应动作。动作的细节（远端、分支、MR 目标）在「项目配置」里设置。</p>
+    <p class="hint">${esc(L('bindings.hint'))}</p>
     <table>
-      <thead><tr><th>${lbl('stage.id', '阶段')}</th><th>${lbl('binding.commitType', '提交类型')}</th>${hooks.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+      <thead><tr><th>${lbl('stage.id', '阶段', 'Stage')}</th><th>${lbl('binding.commitType', '提交类型', 'Commit type')}</th>${hooks.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -415,20 +452,20 @@ function targetCard(t, i) {
   return `
     <div class="target-card" data-target-index="${i}">
       <div class="target-head">
-        <strong>目标 ${i + 1}</strong>
-        <button class="icon" data-action="del-target" title="删除目标">×</button>
+        <strong>${esc(L('profile.target', { n: i + 1 }))}</strong>
+        <button class="icon" data-action="del-target" title="${esc(L('profile.deleteTarget'))}">×</button>
       </div>
-      <label>${lbl('project.mrId', '目标标识')}<input class="input" data-target="id" value="${esc(t.id || '')}"></label>
+      <label>${lbl('project.mrId', '目标标识', 'Target ID')}<input class="input" data-target="id" value="${esc(t.id || '')}"></label>
       <div class="grid-2">
-        <label>${lbl('project.mrHead', '源分支')}<input class="input" data-target="head" value="${esc(t.head || '')}" placeholder="current_branch / origin/main"></label>
-        <label>${lbl('project.mrBase', '目标分支')}<input class="input" data-target="base" value="${esc(t.base || '')}" placeholder="origin/main"></label>
+        <label>${lbl('project.mrHead', '源分支', 'Source branch')}<input class="input" data-target="head" value="${esc(t.head || '')}" placeholder="current_branch / origin/main"></label>
+        <label>${lbl('project.mrBase', '目标分支', 'Target branch')}<input class="input" data-target="base" value="${esc(t.base || '')}" placeholder="origin/main"></label>
       </div>
       <div class="target-when">
-        <label class="check"><input type="checkbox" data-target-when="always" ${w.always ? 'checked' : ''}> ${lbl('project.mrWhen', '总是')}</label>
-        <label>领先提交数<input class="input" type="number" min="1" data-target-when="ahead" value="${esc(w.ahead)}"></label>
-        <label>主干空闲天数<input class="input" type="number" min="1" data-target-when="idle" value="${esc(w.idle)}"></label>
+        <label class="check"><input type="checkbox" data-target-when="always" ${w.always ? 'checked' : ''}> ${lbl('project.mrWhen', '总是', 'Always')}</label>
+        <label>${esc(L('profile.ahead'))}<input class="input" type="number" min="1" data-target-when="ahead" value="${esc(w.ahead)}"></label>
+        <label>${esc(L('profile.idle'))}<input class="input" type="number" min="1" data-target-when="idle" value="${esc(w.idle)}"></label>
       </div>
-      <label>${lbl('project.mrTitle', '标题模板')}<input class="input" data-target="title" value="${esc(t.title || '')}" placeholder="chore: 同步（{ahead} 个提交）"></label>
+      <label>${lbl('project.mrTitle', '标题模板', 'Title template')}<input class="input" data-target="title" value="${esc(t.title || '')}" placeholder="${esc(state.lang === 'zh' ? 'chore: 同步（{ahead} 个提交）' : 'chore: sync ({ahead} commits)')}"></label>
     </div>`;
 }
 
@@ -446,54 +483,54 @@ function profileHtml() {
   return `
     <div class="profile-form">
       <section>
-        <h3>${lbl('project.flows', '本项目启用的流程')}</h3>
+        <h3>${lbl('project.flows', '本项目启用的流程', 'Flows enabled for this project')}</h3>
         <div class="checks">
-          ${state.flows.map((f) => `<label><input type="checkbox" data-flow-enabled="${esc(f.name)}" ${(p.flows || []).includes(f.name) ? 'checked' : ''}> ${esc(f.name)}</label>`).join('') || '<span class="hint">仓库里还没有流程</span>'}
+          ${state.flows.map((f) => `<label><input type="checkbox" data-flow-enabled="${esc(f.name)}" ${(p.flows || []).includes(f.name) ? 'checked' : ''}> ${esc(f.name)}</label>`).join('') || `<span class="hint">${esc(L('side.noFlows'))}</span>`}
         </div>
-        <p class="hint">共享仓库提供全部流程，这里勾选本项目要用的；一个都不勾 = 使用所有已安装流程。</p>
+        <p class="hint">${esc(L('profile.flowsHint'))}</p>
       </section>
 
       <section>
-        <h3>远端与分支</h3>
+        <h3>${esc(L('profile.remotes'))}</h3>
         <div class="grid-2">
-          <label>${lbl('project.pushRemote', '推送远端')}<input class="input" data-p="git.push_remote" value="${esc(g.push_remote || '')}"></label>
-          <label>${lbl('project.upstreamRemote', '上游远端')}<input class="input" data-p="git.upstream_remote" value="${esc(g.upstream_remote || '')}"></label>
-          <label>${lbl('project.baseBranch', '默认分支')}<input class="input" data-p="git.base_branch" value="${esc(g.base_branch || '')}"></label>
-          <label>${lbl('project.onBaseBranch', '在主分支上')}
+          <label>${lbl('project.pushRemote', '推送远端', 'Push remote')}<input class="input" data-p="git.push_remote" value="${esc(g.push_remote || '')}"></label>
+          <label>${lbl('project.upstreamRemote', '上游远端', 'Upstream remote')}<input class="input" data-p="git.upstream_remote" value="${esc(g.upstream_remote || '')}"></label>
+          <label>${lbl('project.baseBranch', '默认分支', 'Base branch')}<input class="input" data-p="git.base_branch" value="${esc(g.base_branch || '')}"></label>
+          <label>${lbl('project.onBaseBranch', '在主分支上', 'On base branch')}
             <select data-p="git.on_base_branch">
-              <option value="refuse" ${g.on_base_branch === 'refuse' ? 'selected' : ''}>refuse（拒绝，先切分支）</option>
-              <option value="create" ${g.on_base_branch === 'create' ? 'selected' : ''}>create（自动建分支）</option>
+              <option value="refuse" ${g.on_base_branch === 'refuse' ? 'selected' : ''}>${esc(L('profile.onBaseRefuse'))}</option>
+              <option value="create" ${g.on_base_branch === 'create' ? 'selected' : ''}>${esc(L('profile.onBaseCreate'))}</option>
             </select>
           </label>
         </div>
-        <label>${lbl('project.branchPattern', '分支命名规则')}<input class="input" data-p="git.branch.pattern" value="${esc(br.pattern || '')}"></label>
-        <label>${lbl('project.createFrom', '分支来源')}<input class="input" data-p="git.branch.create_from" value="${esc(br.create_from || '')}"></label>
+        <label>${lbl('project.branchPattern', '分支命名规则', 'Branch pattern')}<input class="input" data-p="git.branch.pattern" value="${esc(br.pattern || '')}"></label>
+        <label>${lbl('project.createFrom', '分支来源', 'Branch source')}<input class="input" data-p="git.branch.create_from" value="${esc(br.create_from || '')}"></label>
       </section>
 
       <section>
-        <h3>提交</h3>
-        <label>${lbl('project.commitTypes', '提交类型白名单（逗号分隔）')}<input class="input" data-p="actions.commit.message.types" data-list="csv" value="${esc((msg.types || []).join(', '))}"></label>
-        <label>${lbl('project.commitDeny', '禁止提交的路径（每行一个）')}<textarea data-p="actions.commit.add.deny" data-list="lines">${esc((add.deny || []).join('\n'))}</textarea></label>
-        <label>${lbl('project.scopeMap', 'scope 映射（每行 stage: scope）')}<textarea data-p="actions.commit.message.scope_by_stage" data-list="pairs">${esc(pairsText(msg.scope_by_stage))}</textarea></label>
+        <h3>${esc(L('profile.commit'))}</h3>
+        <label>${lbl('project.commitTypes', '提交类型白名单（逗号分隔）', 'Allowed commit types (comma separated)')}<input class="input" data-p="actions.commit.message.types" data-list="csv" value="${esc((msg.types || []).join(', '))}"></label>
+        <label>${lbl('project.commitDeny', '禁止提交的路径（每行一个）', 'Excluded paths (one per line)')}<textarea data-p="actions.commit.add.deny" data-list="lines">${esc((add.deny || []).join('\n'))}</textarea></label>
+        <label>${lbl('project.scopeMap', 'scope 映射（每行 stage: scope）', 'Scope map (one "stage: scope" per line)')}<textarea data-p="actions.commit.message.scope_by_stage" data-list="pairs">${esc(pairsText(msg.scope_by_stage))}</textarea></label>
       </section>
 
       <section>
-        <h3>推送</h3>
+        <h3>${esc(L('profile.push'))}</h3>
         <div class="grid-2">
-          <label>${lbl('project.actionPushRemote', '推送远端')}<input class="input" data-p="actions.push.remote" value="${esc(push.remote || '')}"></label>
-          <label class="check">${lbl('project.setUpstream', '首次推送设置 upstream')}<input type="checkbox" data-p="actions.push.set_upstream" ${push.set_upstream ? 'checked' : ''}></label>
+          <label>${lbl('project.actionPushRemote', '推送远端', 'Push remote')}<input class="input" data-p="actions.push.remote" value="${esc(push.remote || '')}"></label>
+          <label class="check">${lbl('project.setUpstream', '首次推送设置 upstream', 'Set upstream on first push')}<input type="checkbox" data-p="actions.push.set_upstream" ${push.set_upstream ? 'checked' : ''}></label>
         </div>
       </section>
 
       <section>
-        <h3>${lbl('project.mrTargets', '合并请求目标')}</h3>
-        ${targets.map(targetCard).join('') || '<p class="hint">还没有 MR 目标</p>'}
-        <button class="btn ghost" data-action="add-target">＋ 添加目标</button>
+        <h3>${lbl('project.mrTargets', '合并请求目标', 'Merge request targets')}</h3>
+        ${targets.map(targetCard).join('') || `<p class="hint">${esc(L('profile.noTargets'))}</p>`}
+        <button class="btn ghost" data-action="add-target">${esc(L('profile.addTarget'))}</button>
       </section>
 
       <section>
-        <h3>${lbl('project.mrSections', 'MR 描述章节')}</h3>
-        <label>${lbl('project.mrSections', '章节（逗号分隔）')}<input class="input" data-p="actions.mr.sections" data-list="csv" value="${esc((mr.sections || []).join(', '))}"></label>
+        <h3>${lbl('project.mrSections', 'MR 描述章节', 'MR description sections')}</h3>
+        <label>${lbl('project.mrSections', '章节（逗号分隔）', 'Sections (comma separated)')}<input class="input" data-p="actions.mr.sections" data-list="csv" value="${esc((mr.sections || []).join(', '))}"></label>
       </section>
     </div>`;
 }
@@ -504,29 +541,29 @@ function skillsHtml() {
   const rows = state.skills.map((s) => {
     const isRepo = s.source !== 'workspace';
     const actions = isRepo
-      ? `<button class="btn ghost" data-skill-action="copy" data-skill="${esc(s.name)}">复制到工作区</button>`
-      : `<button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">编辑</button>
-         <button class="btn danger" data-skill-action="delete" data-skill="${esc(s.name)}">删除</button>`;
+      ? `<button class="btn ghost" data-skill-action="copy" data-skill="${esc(s.name)}">${esc(L('skills.copy'))}</button>`
+      : `<button class="btn ghost" data-skill-action="edit" data-skill="${esc(s.name)}">${esc(L('skills.edit'))}</button>
+         <button class="btn danger" data-skill-action="delete" data-skill="${esc(s.name)}">${esc(L('skills.delete'))}</button>`;
     return `
       <div class="skill-row">
         <div class="skill-main">
-          <strong>${esc(s.name)} <span class="chip">${isRepo ? '仓库' : '工作区'}</span></strong>
-          <span class="hint">${esc(s.description || '（无描述）')}</span>
+          <strong>${esc(s.name)} <span class="chip">${esc(L(isRepo ? 'skills.repoBadge' : 'skills.workspaceBadge'))}</span></strong>
+          <span class="hint">${esc(s.description || L('skills.noDesc'))}</span>
         </div>
         <div class="skill-actions">${actions}</div>
       </div>`;
   }).join('');
   const disabled = state.workspace ? '' : 'disabled';
   const hint = state.workspace
-    ? `编辑写入工作区 <code>${esc(state.workspace)}</code>，发布仓库保持只读；保存后运行 <code>./install.sh --workspace ${esc(state.workspace)} --agents claude,codex --yes</code> 同步到 agent 目录。`
-    : '先选择或新建工作区才能编辑；仓库里的 skill 只读，可点「复制到工作区」后再改。';
+    ? L('skills.hintWorkspace', { name: esc(state.workspace) })
+    : esc(L('skills.hintReadonly'));
   return `
     <div class="yaml-actions">
-      <button class="btn primary" data-skill-action="new" ${disabled}>＋ 新建 skill</button>
-      <button class="btn" data-skill-action="import" ${disabled}>导入文件夹</button>
+      <button class="btn primary" data-skill-action="new" ${disabled}>${esc(L('skills.new'))}</button>
+      <button class="btn" data-skill-action="import" ${disabled}>${esc(L('skills.import'))}</button>
     </div>
     <p class="hint">${hint}</p>
-    <div class="skill-list">${rows || '<p class="hint">还没有 skill</p>'}</div>`;
+    <div class="skill-list">${rows || `<p class="hint">${esc(L('skills.empty'))}</p>`}</div>`;
 }
 
 function openSkillModal(skill, isNew) {
@@ -534,20 +571,20 @@ function openSkillModal(skill, isNew) {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal">
-      <h3>${isNew ? '新建 skill' : `编辑 ${esc(skill.name)}`}</h3>
-      <label>${lbl('skill.name', '名称（小写字母、数字、连字符）')}
+      <h3>${isNew ? esc(L('modal.newSkill')) : esc(L('modal.editSkill', { name: skill.name }))}</h3>
+      <label>${lbl('skill.name', '名称（小写字母、数字、连字符）', 'Name (lowercase letters, digits, hyphens)')}
         <input class="input" id="skill-name" value="${esc(skill.name || '')}" ${isNew ? '' : 'disabled'}>
       </label>
-      <label>${lbl('skill.description', '描述（告诉 agent 何时使用）')}
+      <label>${lbl('skill.description', '描述（告诉 agent 何时使用）', 'Description (tells the agent when to use it)')}
         <textarea id="skill-desc" rows="3">${esc(skill.description || '')}</textarea>
       </label>
-      <label>${lbl('skill.body', 'SKILL.md 正文（Markdown）')}
+      <label>${lbl('skill.body', 'SKILL.md 正文（Markdown）', 'SKILL.md body (Markdown)')}
         <textarea id="skill-body" rows="16" spellcheck="false">${esc(skill.body || '')}</textarea>
       </label>
       <div class="modal-actions">
         <span class="hint" id="modal-error"></span>
-        <button class="btn" data-modal="cancel">取消</button>
-        <button class="btn primary" data-modal="save">保存</button>
+        <button class="btn" data-modal="cancel">${esc(L('modal.cancel'))}</button>
+        <button class="btn primary" data-modal="save">${esc(L('modal.save'))}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -564,7 +601,7 @@ function openSkillModal(skill, isNew) {
       await api('/api/skill', { method: 'POST', body: { name, description, body } });
       overlay.remove();
       await reloadSkills();
-      setStatus(`skill 已保存: ${name}`, 'ok');
+      setStatus(L('status.skillSaved', { name }), 'ok');
     } catch (err) {
       $('#modal-error', overlay).textContent = err.message;
     }
@@ -597,7 +634,7 @@ function importSkillFolder() {
     if (!files.length) return;
     const folder = files[0].webkitRelativePath.split('/')[0];
     const suggested = folder.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
-    const name = prompt('skill 名称（小写字母、数字、连字符）', suggested);
+    const name = prompt(L('prompt.skillName'), suggested);
     if (!name) return;
     const payload = [];
     for (const f of files) {
@@ -613,7 +650,7 @@ function importSkillFolder() {
     try {
       await api('/api/skill/import', { method: 'POST', body: { name, files: payload } });
       await reloadSkills();
-      setStatus(`已导入 skill: ${name}`, 'ok');
+      setStatus(L('status.skillImported', { name }), 'ok');
     } catch (err) {
       setStatus(err.message, 'err');
     }
@@ -642,20 +679,20 @@ function policyText() {
 function yamlHtml() {
   return `
     <div class="yaml-actions">
-      <button class="btn" data-action="download-flow">下载 flow.yaml</button>
-      <button class="btn" data-action="download-profile">下载 profile.yaml</button>
-      <button class="btn" data-action="download-policy">下载 policy.yaml</button>
-      <button class="btn primary" data-action="save-policy">保存 policy</button>
+      <button class="btn" data-action="download-flow">${esc(L('advanced.downloadFlow'))}</button>
+      <button class="btn" data-action="download-profile">${esc(L('advanced.downloadProfile'))}</button>
+      <button class="btn" data-action="download-policy">${esc(L('advanced.downloadPolicy'))}</button>
+      <button class="btn primary" data-action="save-policy">${esc(L('advanced.savePolicy'))}</button>
     </div>
-    <p class="hint">${lbl('advanced.yaml', '高级预览')}：下面的内容由表单自动生成，只读，不需要手改；需要备份或排查时再下载。</p>
-    <label>${lbl('advanced.tests', '测试命令（验证阶段执行）')}
-      <textarea id="policy-tests" rows="3" placeholder="例如：uv run pytest -q tests/env">${esc(state.policyTests)}</textarea>
+    <p class="hint">${esc(L('advanced.hint'))}</p>
+    <label>${lbl('advanced.tests', '测试命令（验证阶段执行）', 'Test command (run by verification)')}
+      <textarea id="policy-tests" rows="3" placeholder="${esc(L('advanced.testPlaceholder'))}">${esc(state.policyTests)}</textarea>
     </label>
-    <h3>流程定义</h3>
+    <h3>${esc(L('advanced.flowTitle'))}</h3>
     <pre class="yaml" id="yaml-flow">${esc(flowYamlText())}</pre>
-    <h3>项目配置</h3>
+    <h3>${esc(L('advanced.profileTitle'))}</h3>
     <pre class="yaml" id="yaml-profile">${esc(profileYamlText())}</pre>
-    <h3>门禁策略（由阶段生成）</h3>
+    <h3>${esc(L('advanced.policyTitle'))}</h3>
     <pre class="yaml" id="yaml-policy">${esc(policyText())}</pre>`;
 }
 
@@ -679,39 +716,47 @@ function refreshChips() {
 /* ---------------- 事件 ---------------- */
 
 function bindEvents() {
+  $('#lang-select').addEventListener('change', (e) => {
+    state.lang = e.target.value === 'zh' ? 'zh' : 'en';
+    try { localStorage.setItem('agent-workflow-lang', state.lang); } catch { /* ignore */ }
+    renderAll();
+  });
+
   $('#flow-list').addEventListener('click', (e) => {
     const item = e.target.closest('[data-flow]');
     if (!item) return;
-    if (state.dirty && !confirm('当前修改未保存，切换流程会丢失，继续？')) return;
+    if (state.dirty && !confirm(L('confirm.discardFlowSwitch'))) return;
     selectFlow(item.dataset.flow);
     state.dirty = false;
     renderAll();
   });
 
   $('#workspace-select').addEventListener('change', async (e) => {
-    if (state.dirty && !confirm('切换工作区会丢失未保存的修改，继续？')) {
+    if (state.dirty && !confirm(L('confirm.deleteWorkspaceSwitch'))) {
       e.target.value = state.workspace || '';
       return;
     }
     try {
       await api('/api/workspace/select', { method: 'POST', body: { name: e.target.value } });
       await reloadAll();
-      setStatus(e.target.value ? `已切换到工作区 ${e.target.value}` : '已切换到只读模式', 'ok');
+      setStatus(e.target.value
+        ? L('status.workspaceSwitched', { name: e.target.value })
+        : L('status.readonlyMode'), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
   $('#btn-new-workspace').addEventListener('click', async () => {
-    const name = prompt('工作区名称（小写字母、数字、连字符）');
+    const name = prompt(L('prompt.newWorkspace'));
     if (!name) return;
     try {
       await api('/api/workspace', { method: 'POST', body: { name } });
       await reloadAll();
-      setStatus(`工作区已创建: ${name}`, 'ok');
+      setStatus(L('status.workspaceCreated', { name }), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
   $('#btn-new-flow').addEventListener('click', async () => {
-    const name = prompt('新流程名（小写字母、数字、连字符）');
+    const name = prompt(L('prompt.newFlow'));
     if (!name) return;
     try {
       await api('/api/flow/create', { method: 'POST', body: { name } });
@@ -720,7 +765,7 @@ function bindEvents() {
       selectFlow(name);
       state.dirty = false;
       renderAll();
-      setStatus('流程已创建', 'ok');
+      setStatus(L('status.flowCreated'), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
@@ -735,32 +780,32 @@ function bindEvents() {
       if (r.profile?.data) state.profile = clone(r.profile.data);
       renderEnv();
       renderInspector();
-      setStatus('已连接项目', 'ok');
+      setStatus(L('status.connected'), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
   $('#btn-save-flow').addEventListener('click', async () => {
     if (!state.flow) return;
-    if (!state.workspace) { setStatus('请先选择或新建工作区', 'err'); return; }
+    if (!state.workspace) { setStatus(L('status.selectWorkspace'), 'err'); return; }
     try {
       await api('/api/flow', { method: 'POST', body: { data: state.flow } });
       const item = state.flows.find((f) => f.name === state.flow.name);
       if (item) item.data = clone(state.flow);
       state.dirty = false;
-      setStatus('流程已保存', 'ok');
+      setStatus(L('status.savedFlow'), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
   $('#btn-save-profile').addEventListener('click', async () => {
     if (!state.project && !state.workspace) {
-      setStatus('请连接项目或选择工作区后再保存 profile', 'err');
+      setStatus(L('status.saveProfileFirst'), 'err');
       return;
     }
     try {
       const r = await api('/api/profile', { method: 'POST', body: { data: state.profile } });
       state.profilePath = r.path;
       state.dirty = false;
-      setStatus('profile 已保存', 'ok');
+      setStatus(L('status.savedProfile'), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
@@ -807,7 +852,7 @@ function bindEvents() {
       const card = e.target.closest('.stage-card');
       const i = +card.dataset.index;
       const stage = state.flow.stages[i];
-      if (!confirm(`删除阶段 ${stage.id}？`)) return;
+      if (!confirm(L('confirm.deleteStage', { id: stage.id }))) return;
       state.flow.stages.splice(i, 1);
       if (state.profile.bindings) delete state.profile.bindings[stage.id];
       markDirty();
@@ -986,7 +1031,7 @@ async function onInspectorClick(e) {
       try {
         await api('/api/skill/copy', { method: 'POST', body: { name } });
         await reloadSkills();
-        setStatus(`已复制到工作区: ${name}`, 'ok');
+        setStatus(L('status.skillCopied', { name }), 'ok');
       } catch (err) { setStatus(err.message, 'err'); }
       return;
     }
@@ -998,11 +1043,11 @@ async function onInspectorClick(e) {
       return;
     }
     if (skillAction === 'delete') {
-      if (!confirm(`删除 skill ${name}？`)) return;
+      if (!confirm(L('skills.deleteConfirm', { name }))) return;
       try {
         await api('/api/skill', { method: 'DELETE', body: { name } });
         await reloadSkills();
-        setStatus(`已删除 ${name}`, 'ok');
+        setStatus(L('status.skillDeleted', { name }), 'ok');
       } catch (err) { setStatus(err.message, 'err'); }
     }
     return;
@@ -1036,10 +1081,10 @@ async function onInspectorClick(e) {
 
   if (action === 'save-policy') {
     if (!state.flow) return;
-    if (!state.workspace) { setStatus('请先选择或新建工作区', 'err'); return; }
+    if (!state.workspace) { setStatus(L('status.selectWorkspace'), 'err'); return; }
     try {
       await api('/api/policy', { method: 'POST', body: { flow: state.flow.name, data: generatePolicy(state.flow, { testsCommand: state.policyTests }) } });
-      setStatus('policy 已保存', 'ok');
+      setStatus(L('status.policySaved'), 'ok');
     } catch (err) { setStatus(err.message, 'err'); }
   }
 }
