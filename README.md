@@ -36,6 +36,7 @@ cd agent-workflow
 | `examples/profile.yaml` | 项目级 git 动作档案示例 |
 | `scripts/init-project.sh` | 把 profile、skillgate 策略和 `.gitignore` 条目写入目标项目 |
 | `scripts/open-editor.sh` | 启动编辑器并自动打开浏览器 |
+| `scripts/workspace.sh` | 创建 / 列出 / 删除工作区（缓存区） |
 | `docs/glab-setup.md` | Gitee / GitLab / GitHub token、glab 安装与 `glab auth login` 完整说明 |
 
 ## Claude Code 与 Codex
@@ -62,6 +63,15 @@ cd agent-workflow
   ```
 
 - 编辑器左侧选择或新建工作区；未选择时仓库只读，不能保存流程或 skill。
+- 命令行管理：
+
+  ```bash
+  ./scripts/workspace.sh new myws      # 创建
+  ./scripts/workspace.sh list          # 列出
+  ./scripts/workspace.sh path myws     # 打印路径
+  ./scripts/workspace.sh remove myws   # 删除（交互确认）
+  ```
+
 - 仓库里的 skill 需要点「复制到工作区」后才能编辑。
 - 安装时叠加工作区内容（先装仓库版本，再用工作区同名内容覆盖）：
 
