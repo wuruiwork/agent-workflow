@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { validateGraph } from '../skills/flow-runner/scripts/flow-graph.mjs';
 
 const require = createRequire(import.meta.url);
 const yaml = require('../editor/vendor/js-yaml.umd.min.cjs');
@@ -100,6 +101,12 @@ for (const [file, doc] of docs) {
       if (hook === 'task_end' && stage.type !== 'skill') {
         errors.push(`${label}: task_end 只能用在 type=skill 阶段`);
       }
+    }
+  }
+
+  if (Number(doc.version) >= 3) {
+    for (const error of validateGraph(doc).errors) {
+      errors.push(`${flow}/flow.yaml: ${error}`);
     }
   }
 }

@@ -7,7 +7,7 @@
     "editor": "node editor/server.mjs",
     "help": "node editor/server.mjs --help",
     "docs:fields": "node scripts/gen-field-docs.mjs",
-    "test": "node scripts/check.mjs && node --test scripts/archive-retention.test.mjs"
+    "test": "node scripts/check.mjs && node --test scripts/archive-retention.test.mjs scripts/flow-graph.test.mjs"
   },
   "engines": {
     "node": ">=18"
