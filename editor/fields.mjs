@@ -160,10 +160,6 @@ export const FIELD_GROUPS = [
         en: { label: 'Branch source', tip: 'Ref to start an auto-created branch from, e.g. upstream/main.' },
       },
       {
-        key: 'project.commitTypes', label: '提交类型白名单', tip: '允许使用的 commit 前缀，逗号分隔；push 时由门禁检查。',
-        en: { label: 'Allowed commit types', tip: 'Allowed commit prefixes, comma separated; checked by the push gate.' },
-      },
-      {
         key: 'project.commitDeny', label: '禁止提交的路径', tip: '敏感或临时文件，例如 .env、.tmp、.skillgate/phase；提交时会自动排除。',
         en: { label: 'Excluded paths', tip: 'Sensitive or temporary paths, e.g. .env, .tmp, .skillgate/phase; omitted from commits.' },
       },
