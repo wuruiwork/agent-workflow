@@ -43,6 +43,7 @@ actions:
         - ".tmp/"
         - ".skillgate/phase"
         - ".skillgate/evidence/"
+        - ".skillgate/flow-state.json"
     message:
       format: conventional
       language: zh

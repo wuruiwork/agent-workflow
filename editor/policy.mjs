@@ -3,6 +3,7 @@
 
 export function generatePolicy(flow, options = {}) {
   if (!flow) return null;
+  const isGraph = Number(flow.version) >= 3;
   const dir = String(flow.artifacts || '').replace(/\/current\/?$/, '');
   if (!flow.artifacts) {
     return {
@@ -22,13 +23,17 @@ export function generatePolicy(flow, options = {}) {
 
   for (const s of flow.stages || []) {
     if (!s.artifact) continue;
-    const file = `${flow.artifacts}/${s.artifact}`;
+    // archive 阶段的 artifact 直接写成归档目录（如 docs/specs），不再拼到 current 下面。
+    const isArchiveArtifact = flow.archive
+      && (s.artifact === flow.archive || s.artifact.startsWith(`${flow.archive}/`));
+    const file = isArchiveArtifact ? s.artifact : `${flow.artifacts}/${s.artifact}`;
+    const changed = isArchiveArtifact ? [`${flow.archive}/**`] : [`${dir}/*/${s.artifact}`];
     const gateId = `${s.id}-${s.gate || 'done'}`;
-    const isText = /\.(md|txt|ya?ml)$/.test(s.artifact);
-    const gate = isText
+    const isText = /\.(md|markdown|txt|ya?ml)$/.test(s.artifact);
+    const gate = isText && !isArchiveArtifact
       ? { id: gateId, type: 'file-contains', file, pattern: `status: ${s.gate || 'done'}` }
       : { id: gateId, type: 'file-exists', file };
-    gate.when = { changed: [`${dir}/*/${s.artifact}`] };
+    gate.when = { changed };
     gates.push(gate);
     phaseRequires[s.id] = [gateId];
     phaseOrder.push(s.id);
@@ -58,7 +63,15 @@ export function generatePolicy(flow, options = {}) {
     });
   }
 
-  if (phaseOrder.length) {
+  // v3 图流程不能用线性的 phase marker；改由 flow-trace 在 CI 重放执行轨迹。
+  if (isGraph) {
+    gates.push({
+      id: 'flow-trace',
+      type: 'command',
+      run: `node .claude/flows/flow-trace-check.mjs ${flow.name} ${flow.artifacts}/flow-trace.json`,
+      when: { changed: [`${dir}/**`] },
+    });
+  } else if (phaseOrder.length) {
     gates.push({
       id: 'phases',
       type: 'phase',
