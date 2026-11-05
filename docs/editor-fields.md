@@ -147,10 +147,6 @@ refuse = 直接拒绝提交；create = 自动切一个新分支。
 
 自动建分支时从哪个引用开始，例如 upstream/main。
 
-### 提交类型白名单
-
-允许使用的 commit 前缀，逗号分隔；push 时由门禁检查。
-
 ### 禁止提交的路径
 
 敏感或临时文件，例如 .env、.tmp、.skillgate/phase；提交时会自动排除。

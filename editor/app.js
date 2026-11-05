@@ -710,7 +710,6 @@ function profileHtml() {
 
       <section>
         <h3>${esc(L('profile.commit'))}</h3>
-        <label>${lbl('project.commitTypes', '提交类型白名单（逗号分隔）', 'Allowed commit types (comma separated)')}<input class="input" data-p="actions.commit.message.types" data-list="csv" value="${esc((msg.types || []).join(', '))}"></label>
         <label>${lbl('project.commitDeny', '禁止提交的路径（每行一个）', 'Excluded paths (one per line)')}<textarea data-p="actions.commit.add.deny" data-list="lines">${esc((add.deny || []).join('\n'))}</textarea></label>
         <label>${lbl('project.scopeMap', 'scope 映射（每行 stage: scope）', 'Scope map (one "stage: scope" per line)')}<textarea data-p="actions.commit.message.scope_by_stage" data-list="pairs">${esc(pairsText(msg.scope_by_stage))}</textarea></label>
       </section>
