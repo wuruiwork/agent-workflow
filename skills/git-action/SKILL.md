@@ -37,6 +37,7 @@ description: >
 | `FLOW` | 是 | 流程名，如 `doc-first` |
 | `FEATURE` | 是 | feature 目录名，如 `2026-10-29-stage-git`，用于提交 trailer 和分支名 |
 | `SCOPE` | 否 | 本阶段产物的显式路径列表；提供时只允许这些路径进入提交 |
+| `PARTIAL_SCOPE` | 否 | 为真时必须同时提供 `SCOPE`；只暂存/提交 `SCOPE` 内的路径，范围外改动保留在工作区，供并发分支逐个提交 |
 
 ## 前置检查（任何动作之前）
 
@@ -69,15 +70,21 @@ description: >
    - 排除 `add.deny` 中的 pathspec（默认应包含 `.env*`、`*.key`、`*.pem`、`reports/`、`.tmp/`、`.skillgate/phase`）。
    - 排除后没有任何变更：报告 **no-op**（不是失败），给出「本阶段无待提交改动」，结束。
    - 提供了 `SCOPE` 时：只允许 `SCOPE` 内的路径进入本次提交；发现范围外改动时**停止**并列出文件，请调用方确认后再试。
+   - `PARTIAL_SCOPE` 为真时：`SCOPE` 内的改动进入提交，范围外改动**保留在工作区、不提交、不报错**；这是并发分支逐个提交的唯一合法模式。
    - 发现疑似密钥文件（`*.key`、`*.pem`、`.env*`、含 `TOKEN`/`SECRET` 的路径）：不加入提交，单独报告。
 
 3. **暂存**
 
    ```bash
+   # 普通模式
    git add -A -- . ':(exclude)<deny-1>' ':(exclude)<deny-2>'
+
+   # PARTIAL_SCOPE 模式（只暂存 SCOPE 内路径）
+   git add -A -- <scope-1> <scope-2> ':(exclude)<deny-1>' ':(exclude)<deny-2>'
    ```
 
    禁止 `git add -A` 不带排除、禁止 `git add -f`（会绕过 `.gitignore`）、禁止把仓库外路径加入提交。
+   `PARTIAL_SCOPE` 模式提交前检查暂存区只包含 `SCOPE` 内的路径；出现范围外路径时停止并报告。
 
 4. **生成提交信息**
    - 类型：优先 `message.type_by_stage[STAGE]`；取值为 `auto` 时按变更内容判断——只改 `docs/` 或流程文档用 `docs`，只改测试用 `test`，改功能代码用 `feat`（若是修复缺陷用 `fix`），纯流程/配置用 `chore`。
@@ -211,7 +218,7 @@ description: >
 
 1. **profile 是唯一真源**：分支规范、远端、提交类型只从 profile 读取，不在本 skill 内硬编码任何项目约定。
 2. **不做猜测**：profile 缺失、字段缺失、分支不匹配、远端不存在时一律停止并报告，不使用默认值兜底。
-3. **范围可控**：只提交本次动作声明的变更；不顺手提交无关文件，不使用 `-f`。
+3. **范围可控**：只提交本次动作声明的变更；不顺手提交无关文件，不使用 `-f`。`PARTIAL_SCOPE` 必须配合 `SCOPE`，没有 `SCOPE` 时停止。
 4. **不可逆操作**：不 force push、不 rebase、不 `reset --hard`、不改写历史；需要时交由用户。
 5. **失败即停**：任何一步失败都原样报告，不重试、不绕过钩子、不吞错误。
 6. **幂等**：无变更、无待推送提交、MR 已存在都按 no-op 处理，不产生空提交或重复 MR。

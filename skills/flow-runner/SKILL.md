@@ -77,7 +77,8 @@ flows: [doc-first, hotfix]
      - 线上缺陷、需要先复现定位 → `hotfix`。
      - 需要交付 Word/PDF 开发文档 → `dev-docs`（官方 docx skill + LibreOffice）。
      - 需要项目演示文稿/PPT → `ppt`（ppt-master skill）。
-   - 无法判断时只问一个问题：“走哪条流程：doc-first、lite、hotfix、dev-docs 还是 ppt？”
+     - 需要条件分支 / 并发 / 回环 → 项目提供的 v3 图流程（如 `graph-demo`；是否可用以项目 `profile.flows` 为准）。
+   - 无法判断时只问一个问题：“走哪条流程：doc-first、lite、hotfix、dev-docs、ppt，还是项目里的某个 v3 图流程？”
    - 当前仓库同时只允许一个活跃流程；切换前必须得到用户确认。
 
 2. **建 feature 目录**
@@ -98,14 +99,19 @@ flows: [doc-first, hotfix]
    - 不得为了让某个门禁通过而删改策略内容。
 
 4. **查看状态**
+   - 先读取 flow.yaml 的 `version`。
+   - `version < 3`：按下面的 v2 单链逻辑执行。
 
-   ```bash
-   npx --yes @reneza/skillgate@0.16.0 phase
-   ```
+     ```bash
+     npx --yes @reneza/skillgate@0.16.0 phase
+     ```
 
-   `.skillgate/phase` 记录的是**最近完成的阶段**；没有该文件表示还未完成任何阶段，从 flow.yaml 的第一个 stage 开始。
+     `.skillgate/phase` 记录的是**最近完成的阶段**；没有该文件表示还未完成任何阶段，从 flow.yaml 的第一个 stage 开始。
+   - `version >= 3`：不要用 `skillgate phase`，改用「执行循环（v3 图流程）」里的 `flow-state status`。
 
-## 执行循环
+## 执行循环（v2 单链）
+
+> `version >= 3` 的流程不要使用本节，改用「执行循环（v3 图流程）」。
 
 1. 确定待执行阶段：`cat .skillgate/phase` 得到最近完成的阶段；flow.yaml 中它的下一个 stage 就是当前要做的阶段。没有 marker 时从第一个 stage 开始。
 2. 在 flow.yaml 中找到该 stage。
@@ -185,6 +191,80 @@ retention:
 - 完成输出记录：保留数量、清理数量、跳过数量及原因。
 - agent-workflow 仓库内可用 `node scripts/archive-retention.mjs --project <dir> --flow <flow>` 预演候选；目标项目没有该脚本时按本节规则手工执行。
 
+## 执行循环（v3 图流程）
+
+`version: 3` 的流程以 `edges` 为唯一顺序来源，可能包含条件分支、fan-out/fan-in 和回环。runner 不自己推算图，统一调用本 skill 自带的 `scripts/flow-state.mjs`。
+
+### 状态脚本与文件
+
+- 脚本：`<本 skill 目录>/scripts/flow-state.mjs`（Claude Code 安装后通常是 `~/.claude/skills/flow-runner/scripts/flow-state.mjs`；Codex 在 `~/.codex/skills/...`）。
+- 本地状态：`.skillgate/flow-state.json`（不提交）。
+- 执行轨迹：`<flow.artifacts>/flow-trace.json`（提交，供 CI 校验）。
+- 只允许通过脚本读写这两个文件；不要手改，也不要用 `skillgate phase` 推进 v3 流程。
+- 常用命令（`<flow.yaml>` 是按「流程目录解析」找到的文件，`<project>` 是项目根目录）：
+
+  ```bash
+  node <skill>/scripts/flow-state.mjs status   --flow <flow.yaml> --project <project>
+  node <skill>/scripts/flow-state.mjs start    --flow <flow.yaml> --project <project> --stage <id>
+  node <skill>/scripts/flow-state.mjs complete --flow <flow.yaml> --project <project> \
+    --stage <id> --outcome pass|fail --changed <path1,path2> [--parallel-group <group>]
+  ```
+
+  所有命令输出 JSON；`status` 返回 `ready` / `active` / `finished` / `visits`。
+
+### 执行循环
+
+1. **读取状态**
+   - 运行 `status`。没有状态文件时会自动初始化。
+   - `finished: true`：跳到第 8 步。
+   - `ready` 为空且 `active` 为空但未结束：报告卡住（通常是图结构或门禁问题），停止。
+
+2. **决定执行方式**
+   - `approval: true` 的阶段永远由主 agent 串行执行；多个阶段同时 ready 时，先把 approval 阶段逐个处理完，再处理其余阶段。
+   - 有多个非 approval 的 ready 阶段，且当前环境支持子 agent（Claude Code 的 Agent/Task 能力）：按并发组执行，默认最多 4 个（可用环境变量 `FLOW_MAX_PARALLEL` 调整）。
+   - 只有单个 ready 阶段，或环境不支持子 agent（例如没有并发能力的 Codex）：串行执行，流程语义不变。
+
+3. **回环重入**
+   - 如果 `visits[<stage>] > 0`，说明这个阶段是回边重新激活的：执行前先把该阶段产物的 frontmatter `status` 重置为 `draft`，并在输出里说明。不要复用上一次的 `pass`/`done` 产物。
+   - `approval: true` 的阶段仍按「审批阶段的两遍执行」处理；只有实现轮达到 gate 后才调用 `complete`。
+
+4. **执行阶段**
+   - 执行前先对每个准备执行的阶段调用 `start --stage <id>`；返回错误就停止。
+   - `type: doc`：读取 `<flows>/<flow>/<ref>`，按文档执行。
+   - `type: skill`：调用 `ref` 对应的 skill；子 agent 场景下让它读取并执行对应 `SKILL.md`。
+   - 子 agent 的边界（必须在 prompt 里写明）：
+     - 只做本阶段工作，只写本阶段产物和必要文件；
+     - 不写 `.skillgate/flow-state.json`、不写 `flow-trace.json`、不跑 git、不修改其他阶段产物；
+     - 不执行 `task_end` 钩子；如果阶段 skill 需要中间提交，让它返回已完成的 task 和路径列表，由主 runner 在整组结束后串行调用 `git-action`（`PARTIAL_SCOPE: true`）；
+     - 返回 JSON：`{ outcome, changedPaths, artifactStatus, taskEnds, error }`；`outcome` 必须由产物实际状态决定，不能猜。
+   - 同一并发组内检查写集重叠：两个阶段报告了相同路径 → 立即停止，报告路径并要求用户改为串行或拆分阶段。不要带着重叠写集继续提交。
+
+5. **记录结果**
+   - 并发组要等整组子 agent 返回后再处理，按阶段声明顺序逐个调用 `complete`。
+   - `complete` 会自行校验产物门禁：声明 `pass` 必须真的达到 gate，声明 `fail` 必须确实未达到。失败就停止，不要改参数重试。
+   - `--changed` 传入该阶段实际改动的路径（子 agent 返回值）；并发组用同一个 `--parallel-group` 标记，便于轨迹审计。
+   - `complete` 返回新的 `ready` / `finished`；出现错误时原样报告并停止。
+
+6. **执行阶段钩子**
+   - 只对 `outcome: pass` 的阶段执行 `stage_end` 钩子；`fail` 只用于走条件边或停止，不提交失败产物。
+   - 同一并发组的钩子等整组结束后由主 runner **串行**执行，避免并发 commit/push。
+   - 调用 `git-action` 时传 `PARTIAL_SCOPE: true` 和 `SCOPE`：本阶段 `changedPaths` + 本阶段产物 + 结束时的 `flow-trace.json`。
+   - 如果流程刚结束、`complete` 返回 `finished: true`，但该阶段没有 commit 绑定：报告「flow-trace.json 尚未提交」，不要静默结束。
+
+7. **继续**
+   - 用 `complete` 返回的 `ready` 继续第 2 步；也可以重新运行 `status`。
+
+8. **结束**
+   - 运行 `npx --yes @reneza/skillgate@0.16.0 check`；未通过就停止并报告。
+   - 对每个已完成的终点阶段执行一次 `finish` 钩子（按阶段声明顺序，串行）；没有绑定则提示用户可以 `git push`。
+   - 报告 `flow-trace.json` 路径和轨迹事件数；如果它没有被提交，明确列为未完成项。
+
+### v3 门禁说明
+
+- 阶段门禁由 `flow-state complete` 在本地校验，`flow-trace` 的 CI gate 在提交后重放轨迹；不再用 `skillgate phase` 的线性 marker。
+- `.skillgate/done.yaml` 仍保留每个阶段的产物 gate、`tests-pass` 和 `archive-indexed`；v3 不生成线性 `phases` gate。
+- 终端阶段必须以 `pass` 结束；`fail` 的终点会报错。
+
 ## doc-first 阶段表
 
 | 阶段 | 类型 | 执行 | 产物 | 推进条件 |
@@ -237,23 +317,25 @@ ppt 流程（设计感更强的 .pptx）：
 
 ## 强制规则
 
-1. **不改状态**：`.skillgate/phase` 只能由 `skillgate phase` 写；`.skillgate/done.yaml` 只能由用户确认后切换。
-2. **不跳阶段**：`skillgate phase` 失败就是失败，不允许绕过。
+1. **不改状态**：v2 的 `.skillgate/phase` 只能由 `skillgate phase` 写；v3 的 `.skillgate/flow-state.json` 和 `flow-trace.json` 只能由 `flow-state` 脚本写；`.skillgate/done.yaml` 只能由用户确认后切换。
+2. **不跳阶段**：v2 的 `skillgate phase` 失败就是失败；v3 的 `flow-state complete` 失败就是失败；都不允许绕过或手改状态文件。
 3. **不越权**：`type: skill` 阶段把工作交给对应 skill；不要在本 skill 里重写它的步骤。
 4. **不自己执行 git**：runner 不拼 `git add` / `git commit` / `git push`；提交、推送、MR 只能调用 `git-action`，且必须由 profile 绑定驱动。没有 profile 时只提示用户，不替代执行。
 5. **人工确认**：brief、design、tasks 三个阶段必须等用户确认后才能改 `approved`；`approval: true` 的 skill 阶段必须先完成设计轮并等待用户确认，才能进入实现轮。
 6. **单一活跃 feature**：`current` 符号链接指向当前 feature；切换 feature 前确认旧 feature 已归档或明确暂停。
 7. **策略可审计**：切换流程时保留原 `.skillgate/done.yaml` 的 diff，必要时提交到分支。
-8. **钩子不改门禁**：`git-action` 成功不等于门禁通过，失败也不能被忽略；钩子只执行动作，不能替代 `skillgate phase`。
-9. **钩子顺序固定**：先完成阶段产物和门禁检查，再执行 `stage_end` 动作，最后推进 phase；`finish` 动作只在全部门禁通过后执行。
+8. **钩子不改门禁**：`git-action` 成功不等于门禁通过，失败也不能被忽略；钩子只执行动作，不能替代 `skillgate phase`（v2）或 `flow-state complete`（v3）。
+9. **钩子顺序固定**：先完成产物门禁检查（v3 的 `complete` 会同时校验并推进状态），再执行 `stage_end` 动作；v2 最后调用 `skillgate phase`；`finish` 动作只在全部门禁通过后执行。
 10. **归档清理与保留**：`archive` 阶段必须按阶段文档执行清理，并遵守 `retention.archive`；只删除临时/冗余文件或符合保留策略的历史 feature。删除 tracked 文件前必须让用户确认（`mode: auto` 除外），不得删除流程产物或改写归档结论。
+11. **并发不越过门禁**：v3 并发组必须等整组返回、检查写集重叠、逐个 `flow-state complete`，再由主 runner 串行执行钩子；子 agent 不得写状态文件、不得跑 git。
 
 ## 完成输出
 
-- 当前流程与 feature。
+- 当前流程与 feature；v3 流程注明 `version: 3` 和当前 `ready` / `active` / `visits`。
 - 当前阶段与状态。
 - 产物路径与状态。
-- skillgate 门禁结果（通过/缺失）。
+- skillgate 门禁结果（通过/缺失）；v3 的 `flow-trace.json` 路径、事件数、是否已提交。
 - git 动作结果：commit sha、推送目标、MR 链接，或 no-op 原因。
+- 并发执行结果（如有）：并行组、各阶段 outcome、写集是否重叠。
 - 下一步：继续某阶段、等待用户确认、或 `git push`。
 - 风险与未决项。
