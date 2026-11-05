@@ -77,9 +77,35 @@ else
   echo "已写入: $POLICY（按 $PRIMARY_FLOW 生成；记得把 tests-pass 换成项目测试命令）"
 fi
 
+# v3 图流程需要额外的轨迹校验脚本和流程快照；v2 项目不增加任何文件。
+is_graph_flow() {
+  grep -Eq '^version:[[:space:]]*3([[:space:]]|$)' "$ROOT/flows/$1/flow.yaml"
+}
+
+HAS_GRAPH=0
+for f in $FLOWS; do
+  if is_graph_flow "$f"; then HAS_GRAPH=1; break; fi
+done
+
+if [ "$HAS_GRAPH" = 1 ]; then
+  mkdir -p "$PROJECT/.claude/flows/vendor" "$PROJECT/.claude/flows/flow-graphs"
+  cp "$ROOT/scripts/flow-trace-check.mjs" "$PROJECT/.claude/flows/flow-trace-check.mjs"
+  cp "$ROOT/skills/flow-runner/scripts/flow-graph.mjs" "$PROJECT/.claude/flows/flow-graph.mjs"
+  cp "$ROOT/editor/vendor/js-yaml.umd.min.cjs" "$PROJECT/.claude/flows/vendor/js-yaml.umd.min.cjs"
+  cp "$ROOT/editor/vendor/js-yaml.LICENSE" "$PROJECT/.claude/flows/vendor/js-yaml.LICENSE"
+  for f in $FLOWS; do
+    if is_graph_flow "$f"; then
+      mkdir -p "$PROJECT/.claude/flows/flow-graphs/$f"
+      cp "$ROOT/flows/$f/flow.yaml" "$PROJECT/.claude/flows/flow-graphs/$f/flow.yaml"
+      echo "已安装图流程快照: .claude/flows/flow-graphs/$f/flow.yaml"
+    fi
+  done
+  echo "已安装轨迹校验脚本: .claude/flows/flow-trace-check.mjs"
+fi
+
 GITIGNORE="$PROJECT/.gitignore"
 touch "$GITIGNORE"
-for line in ".skillgate/phase" ".skillgate/evidence/" ".claude/flows/profile.local.yaml"; do
+for line in ".skillgate/phase" ".skillgate/evidence/" ".skillgate/flow-state.json" ".claude/flows/profile.local.yaml"; do
   if ! grep -qxF "$line" "$GITIGNORE"; then
     printf '%s\n' "$line" >> "$GITIGNORE"
     echo "已加入 .gitignore: $line"
@@ -93,5 +119,5 @@ cat <<EOF
   2. 把 $POLICY 的 tests-pass 改成项目真实测试命令。
   3. 需要可视化调整时：
        $ROOT/scripts/open-editor.sh --project "$PROJECT"
-  4. 在项目里对 Claude 说「走文档先行流程」或「/flow-runner $FLOW」。
+  4. 在项目里对 Claude 说「走文档先行流程」或「/flow-runner $PRIMARY_FLOW」。
 EOF

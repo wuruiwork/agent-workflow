@@ -11,8 +11,31 @@
 | hotfix | `hotfix/flow.yaml` | 线上缺陷 | 复现定位 → 单任务 → 实现 → 验证 → 归档 |
 | dev-docs | `dev-docs/flow.yaml` | Word/PDF 开发文档 | 简报 → 草稿 → 评审 → Word → PDF → 归档 |
 | ppt | `ppt/flow.yaml` | 项目演示文稿 | 简报 → 大纲 → 内容 → 设计 → PPTX → 视觉评审 → PDF → 归档 |
+| graph-demo | `graph-demo/flow.yaml` | v3 图流程演示 | brief → 并发 design/research → tasks（join all）→ implement → review（pass→verify / fail→fix→review，limit 3）→ verify → archive |
 
 `doc-first/project-template/` 是复制到目标项目的门禁模板（skillgate + Claude Code hook + CI + pre-push）。
+
+## 图流程（v3）
+
+`version: 3` 用 `edges` 作为唯一顺序来源；v2 仍然按 `stages` 数组顺序执行。
+
+```yaml
+version: 3
+stages:
+  - id: verify
+    join: any        # any（默认）| all
+edges:
+  - { from: review, to: verify, when: pass }
+  - { from: review, to: fix, when: fail }
+  - { from: fix, to: review, limit: 3 }
+```
+
+- `when`：`always`（默认）/ `pass` / `fail` / `{ status: <value> }`。
+- `join`：`all` 用于 fan-out 汇合；`any` 用于条件分支汇合。
+- `limit`：回环必须有至少一条边带 `limit`，否则校验器拒绝。
+- 执行：`flow-runner` 调用 `skills/flow-runner/scripts/flow-state.mjs`，本地状态在 `.skillgate/flow-state.json`；`<flow.artifacts>/flow-trace.json` 提交后由 CI 的 `flow-trace` gate 重放校验。
+- v3 的 `policy.yaml` 不再有线性 `phases` gate，保留阶段产物 gate、`tests-pass` 和 `archive-indexed`。
+- 并发：支持子 agent 的环境并发执行 ready 阶段；子 agent 不跑 git、不写状态；同一并发组的钩子在整组结束后由主 runner 串行执行，写集重叠时停止。
 
 ## 门禁引擎：skillgate
 

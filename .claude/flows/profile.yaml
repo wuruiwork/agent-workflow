@@ -39,6 +39,7 @@ actions:
         - ".tmp/"
         - ".skillgate/phase"
         - ".skillgate/evidence/"
+        - ".skillgate/flow-state.json"
         - ".claude/flows/profile.local.yaml"
     message:
       format: conventional

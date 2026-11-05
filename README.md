@@ -2,9 +2,9 @@
 
 通用流程 + 项目级 git 动作 + 可视化流程编辑器，支持 Claude Code 与 Codex。
 
-- **流程通用**：`doc-first`、`lite`、`hotfix`、`dev-docs`、`ppt` 只声明阶段和动作槽位，不写死任何项目的 git 规则。
+- **流程通用**：`doc-first`、`lite`、`hotfix`、`dev-docs`、`ppt` 是 v2 单链流程；`graph-demo` 演示 v3 图流程（条件分支、并发、回环）。流程只声明阶段和动作槽位，不写死任何项目的 git 规则。
 - **git 动作项目化**：每个项目用 `.claude/flows/profile.yaml` 决定「哪个阶段做什么」——commit、push、MR 的时机和规范全部由项目定义。
-- **可视化编辑**：内置本地 HTML 编辑器，拖动阶段、勾选 hook、配置 git 动作，直接写回 YAML。
+- **可视化编辑**：内置本地 HTML 编辑器，编辑线性流程或 v3 图流程、勾选 hook、配置 git 动作，直接写回 YAML。
 
 ## 快速开始
 
@@ -31,7 +31,7 @@ cd agent-workflow
 |---|---|
 | `install.sh` | 安装 Node.js、Claude Code、skills、flows，并合并插件配置 |
 | `skills/` | 通用 skills：`flow-runner`、`git-action`、`df-implement`、`df-verify`、`code-review`、`plan-code`、`docs-steward`、`repository-docs`；Claude Code 与 Codex 共用 |
-| `flows/` | 通用流程：`doc-first`、`lite`、`hotfix`、`dev-docs`、`ppt`，含各流程的 `flow.yaml`、`policy.yaml`、阶段文档和项目模板；两个 agent 共用 |
+| `flows/` | 通用流程：`doc-first`、`lite`、`hotfix`、`dev-docs`、`ppt`，以及 v3 示例 `graph-demo`；含各流程的 `flow.yaml`、`policy.yaml`、阶段文档和项目模板；两个 agent 共用 |
 | `editor/` | 可视化流程编辑器（本地 Node 服务 + 单页 HTML，无需构建、无外部依赖） |
 | `examples/profile.yaml` | 项目级 git 动作档案示例 |
 | `scripts/init-project.sh` | 把 profile、skillgate 策略和 `.gitignore` 条目写入目标项目 |
@@ -160,6 +160,29 @@ actions:
 
 `git-action` 按 `targets` 顺序判定，每个目标独立幂等；没有可合并提交时始终 no-op。
 
+## 图流程（v3）
+
+`version: 3` 的流程用 `edges` 表达顺序，支持条件分支、fan-out/fan-in 和回环；v2 流程完全不受影响。
+
+```yaml
+version: 3
+edges:
+  - { from: brief, to: design }
+  - { from: brief, to: research }
+  - { from: design, to: tasks }
+  - { from: research, to: tasks }
+  - { from: review, to: verify, when: pass }
+  - { from: review, to: fix, when: fail }
+  - { from: fix, to: review, limit: 3 }
+```
+
+- `when`：`always`（默认）、`pass` / `fail`（按源阶段产物门禁结果）、`{ status: <value> }`（按产物 frontmatter）。
+- `join`：`any`（默认，条件分支汇合）或 `all`（fan-out 汇合）。
+- `limit`：边最多被穿越次数；每个环至少要有一条带 `limit` 的边。
+- 执行：`flow-runner` 用 skill 自带的 `scripts/flow-state.mjs` 维护 `.skillgate/flow-state.json`，并写出 `<产物目录>/flow-trace.json`。
+- 并发：支持子 agent 的环境会并发执行 ready 阶段；同一并发组的写集重叠时停止，git 动作由主 runner 串行执行。
+- CI：v3 的 `policy.yaml` 不生成线性 `phases` gate，改用 `flow-trace` command gate；新项目运行 `./scripts/init-project.sh` 会安装 `.claude/flows/flow-trace-check.mjs`、`flow-graph.mjs` 和流程快照。
+
 ## 可视化编辑器
 
 ```bash
@@ -173,7 +196,7 @@ actions:
 
 功能：
 
-- 阶段增删、拖动排序；编辑 `type` / 产物 / 状态 gate / 人工确认。
+- 顶部流程图：v2 显示阶段名和线性走向，可拖动排序、悬停连线插入、悬停节点删除；v3 显示可编辑 DAG，拖动节点右侧端口连边、点击边设置 `pass` / `fail` / `status` 和回环上限、边上的「＋」插入节点；v2 可一键「转为图流程」。下方功能槽位卡片只负责配置 `type` / 引用 / 产物 / 状态 gate / 人工确认（v3 额外有汇合方式）。
 - `type: skill` 的 `ref` 直接从仓库已有 skill 下拉选择；新增 skill 后立即出现在选项里。
 - 为每个阶段勾选 hook（`stage_end` / `finish`）。
 - 「阶段动作」矩阵：按 阶段 × hook 勾选 `commit` / `push` / `mr`，直接写入 profile 的 `bindings`。

@@ -3,12 +3,14 @@
 import { generatePolicy } from '/policy.mjs';
 import { translate } from '/i18n.mjs';
 import { FIELD_GROUPS, FIELD_LABELS, FIELD_LABELS_EN, FIELD_TIPS, FIELD_TIPS_EN } from '/fields.mjs';
+import { isGraphFlow, layoutGraph, normalizeWhen, validateGraph, whenLabel } from '/flow-graph.mjs';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = (x) => JSON.parse(JSON.stringify(x ?? null));
 const DUMP_OPTS = { noRefs: true, lineWidth: -1, sortKeys: false };
+let graphDrag = null;
 const COMMIT_TYPES = ['', 'auto', 'feat', 'fix', 'docs', 'test', 'chore', 'refactor', 'build'];
 const ACTIONS = ['commit', 'push', 'mr'];
 const ACTION_I18N = { commit: 'action.commit', push: 'action.push', mr: 'action.mr' };
@@ -31,6 +33,8 @@ const state = {
   flows: [],
   flowName: null,
   flow: null,
+  selectedStage: null,
+  selectedEdge: null,
   profile: null,
   profilePath: '',
   profileTarget: 'example',
@@ -208,6 +212,8 @@ function selectFlow(name) {
   if (!item) return;
   state.flowName = name;
   state.flow = item.data ? clone(item.data) : null;
+  state.selectedStage = state.flow?.stages?.[0]?.id || null;
+  state.selectedEdge = null;
   const testsGate = item.policy?.gates?.find((g) => g.id === 'tests-pass');
   state.policyTests = testsGate?.run || '';
 }
@@ -266,6 +272,7 @@ function renderFlow() {
   if (!state.flow) {
     meta.innerHTML = `<p class="hint">${esc(L('canvas.noFlow'))}</p>`;
     stages.innerHTML = '';
+    $('#flowchart').innerHTML = '';
     return;
   }
   const f = state.flow;
@@ -280,11 +287,154 @@ function renderFlow() {
       ${['approved', 'done', 'pass', 'confirmed', 'implemented', 'draft'].map((g) => `<option value="${g}">`).join('')}
     </datalist>
   `;
+  renderFlowchart();
   renderStages();
+}
+
+// 流程图：v2 是线性链（拖动排序），v3 是可编辑 DAG（拖端口连线、点边改条件）。
+function renderFlowchart() {
+  const el = $('#flowchart');
+  if (!el) return;
+  if (!state.flow) { el.innerHTML = ''; return; }
+  el.innerHTML = isGraphFlow(state.flow) ? graphFlowchart() : linearFlowchart();
+}
+
+function linearFlowchart() {
+  const stages = state.flow.stages || [];
+  const parts = [];
+  stages.forEach((stage, i) => {
+    parts.push(flowNode(stage, i));
+    if (i < stages.length - 1) parts.push(flowLink(i + 1));
+  });
+  const addLabel = L('canvas.addStage');
+  parts.push(`<button class="flow-append" data-insert-stage="${stages.length}" title="${esc(addLabel)}" aria-label="${esc(addLabel)}">＋</button>`);
+  return `
+    <div class="graph-toolbar">
+      <button class="btn ghost" data-action="convert-graph">${esc(L('graph.convert'))}</button>
+    </div>
+    <div class="flow-line">${parts.join('')}</div>`;
+}
+
+function graphFlowchart() {
+  const layout = layoutGraph(state.flow);
+  const stages = state.flow.stages || [];
+  if (state.selectedEdge != null && !(state.flow.edges || [])[state.selectedEdge]) state.selectedEdge = null;
+  const stageIndex = (id) => stages.findIndex((stage) => stage.id === id);
+
+  const edgeMarkup = layout.edges.map((edge, i) => {
+    const label = whenLabel(edge.when);
+    const selected = state.selectedEdge === i;
+    const marker = selected ? 'graph-arrow-selected' : (edge.isBack ? 'graph-arrow-back' : 'graph-arrow');
+    return `
+      <path class="edge-hit" data-edge-index="${i}" d="${esc(edge.path)}"></path>
+      <path class="flow-edge${edge.isBack ? ' back' : ''}${selected ? ' selected' : ''}" data-edge-index="${i}" d="${esc(edge.path)}" marker-end="url(#${marker})"></path>
+      ${label ? `<text class="flow-edge-label" x="${edge.labelX}" y="${edge.labelY}">${esc(label)}</text>` : ''}`;
+  }).join('');
+  const edgeButtons = layout.edges.map((edge, i) =>
+    `<button class="edge-add" data-split-edge="${i}" style="left:${edge.addX}px;top:${edge.addY}px" title="${esc(L('canvas.insertStage'))}" aria-label="${esc(L('canvas.insertStage'))}">＋</button>`
+  ).join('');
+
+  const nodeMarkup = layout.nodes.map((node) => {
+    const index = stageIndex(node.id);
+    const selected = state.selectedStage === node.id ? ' selected' : '';
+    const del = L('stage.delete');
+    return `
+      <div class="flow-node graph-node${selected}" data-index="${index}" data-stage-id="${esc(node.id)}" style="left:${node.x}px;top:${node.y}px;width:${node.w}px;height:${node.h}px">
+        <span class="flow-node-name">${esc(node.id)}</span>
+        <button class="flow-node-del" data-del-stage="${index}" draggable="false" title="${esc(del)}" aria-label="${esc(del)}">×</button>
+        <span class="flow-port" data-port="${esc(node.id)}" title="${esc(L('graph.portHint'))}" aria-label="${esc(L('graph.portHint'))}"></span>
+      </div>`;
+  }).join('');
+
+  const validation = validateGraph(state.flow);
+  const warnings = [
+    ...validation.errors.map((text) => `<div class="error">${esc(text)}</div>`),
+    ...validation.warnings.map((text) => `<div>${esc(text)}</div>`),
+  ].join('');
+
+  return `
+    <div class="graph-toolbar">
+      <button class="btn ghost" data-action="add-successor">${esc(L('graph.addStage'))}</button>
+    </div>
+    <div class="flow-graph" style="width:${layout.width}px;height:${layout.height}px">
+      <svg class="graph-edges" width="${layout.width}" height="${layout.height}" viewBox="0 0 ${layout.width} ${layout.height}">
+        <defs>
+          <marker id="graph-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--border)"/></marker>
+          <marker id="graph-arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--accent)"/></marker>
+          <marker id="graph-arrow-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--warn)"/></marker>
+        </defs>
+        ${edgeMarkup}
+        <path class="temp-edge" id="temp-edge" d=""></path>
+      </svg>
+      ${edgeButtons}
+      ${nodeMarkup}
+    </div>
+    ${edgeEditorHtml()}
+    ${warnings ? `<div class="graph-warnings">${warnings}</div>` : ''}`;
+}
+
+function edgeEditorHtml() {
+  const edge = (state.flow?.edges || [])[state.selectedEdge];
+  if (!edge) return '';
+  const when = normalizeWhen(edge.when);
+  const isStatus = typeof when === 'object' && when.status != null;
+  const selectedValue = isStatus ? 'status' : when;
+  const options = [
+    ['always', L('graph.conditionAlways')],
+    ['pass', L('graph.conditionPass')],
+    ['fail', L('graph.conditionFail')],
+    ['status', L('graph.conditionStatus')],
+  ].map(([value, label]) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  return `
+    <div class="edge-editor" data-edge-editor="${state.selectedEdge}">
+      <div class="edge-editor-head">
+        <strong>${esc(edge.from)} → ${esc(edge.to)}</strong>
+        <button class="btn danger" data-action="delete-edge">${esc(L('graph.deleteEdge'))}</button>
+      </div>
+      <label>${lbl('edge.when', '条件', 'Condition')}<select class="input" data-edge-when>${options}</select></label>
+      ${isStatus ? `<label>${lbl('edge.status', '状态值', 'Status value')}<input class="input" data-edge-status value="${esc(when.status || '')}" placeholder="pass"></label>` : ''}
+      <label>${lbl('edge.limit', '回环上限', 'Loop limit')}<input class="input" type="number" min="1" data-edge-limit value="${edge.limit ?? ''}" placeholder="${esc(L('graph.noLimit'))}"></label>
+    </div>`;
+}
+
+function flowNode(stage, index) {
+  const selected = state.selectedStage === stage.id ? ' selected' : '';
+  const del = L('stage.delete');
+  return `
+    <div class="flow-node${selected}" draggable="true" data-index="${index}">
+      <span class="flow-node-name">${esc(stage.id)}</span>
+      <button class="flow-node-del" data-del-stage="${index}" draggable="false" title="${esc(del)}" aria-label="${esc(del)}">×</button>
+    </div>`;
+}
+
+function flowLink(index) {
+  const label = L('canvas.insertStage');
+  return `
+    <div class="flow-link">
+      <span class="flow-arrow"></span>
+      <button class="flow-insert" data-insert-stage="${index}" title="${esc(label)}" aria-label="${esc(label)}">＋</button>
+    </div>`;
 }
 
 function renderStages() {
   $('#stages').innerHTML = (state.flow?.stages || []).map(stageCard).join('');
+}
+
+function selectStage(id, scroll = false) {
+  state.selectedStage = id || null;
+  $$('#flowchart .flow-node').forEach((node) => {
+    const stage = state.flow?.stages?.[+node.dataset.index];
+    node.classList.toggle('selected', !!stage && stage.id === state.selectedStage);
+  });
+  $$('#stages .stage-card').forEach((card) => {
+    const stage = state.flow?.stages?.[+card.dataset.index];
+    card.classList.toggle('selected', !!stage && stage.id === state.selectedStage);
+  });
+  if (scroll && state.selectedStage) {
+    const card = $$('#stages .stage-card')
+      .find((c) => state.flow?.stages?.[+c.dataset.index]?.id === state.selectedStage);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }
 }
 
 function skillMeta(name) {
@@ -333,10 +483,9 @@ function stageCard(s, i) {
     ? `<p class="hint stage-skill-desc" data-skill-desc>${skillDescHtml(s.ref)}</p>`
     : '';
   return `
-    <div class="stage-card" draggable="true" data-index="${i}">
+    <div class="stage-card ${state.selectedStage === s.id ? 'selected' : ''}" data-index="${i}">
       <div class="stage-head">
         <input class="input" data-field="id" value="${esc(s.id)}" spellcheck="false" title="stage id">
-        <button class="icon" data-action="del-stage" title="${esc(L('stage.delete'))}">×</button>
       </div>
       <label>${lbl('stage.type', '类型', 'Type')}
         <select data-field="type">
@@ -348,6 +497,12 @@ function stageCard(s, i) {
       <label>${lbl('stage.artifact', '产物文件', 'Artifact file')}<input class="input" data-field="artifact" value="${esc(s.artifact || '')}"></label>
       <label>${lbl('stage.gate', '状态门禁', 'Status gate')}<input class="input" data-field="gate" list="gate-options" value="${esc(s.gate || '')}"></label>
       <label class="check"><input type="checkbox" data-field="approval" ${s.approval ? 'checked' : ''}> ${lbl('stage.approval', '人工确认', 'Manual approval')}</label>
+      ${isGraphFlow(state.flow) ? `<label>${lbl('stage.join', '汇合方式', 'Join')}
+        <select data-field="join">
+          <option value="any" ${(s.join || 'any') === 'any' ? 'selected' : ''}>any</option>
+          <option value="all" ${s.join === 'all' ? 'selected' : ''}>all</option>
+        </select>
+      </label>` : ''}
       <div class="stage-hooks">
         <span class="stage-hooks-title">${lbl('stage.hooks', '动作槽位', 'Checkpoints')}</span>
         ${hooks.map((h) => `<label class="check"><input type="checkbox" data-hook="${esc(h)}" ${(s.hooks || []).includes(h) ? 'checked' : ''}> ${esc(h)}</label>`).join('')}
@@ -766,6 +921,129 @@ function refreshChips() {
   }
 }
 
+/* ---------------- 阶段插入与图编辑 ---------------- */
+
+function makeStage() {
+  const stages = (state.flow.stages ||= []);
+  const used = new Set(stages.map((s) => s.id));
+  let n = used.size + 1;
+  while (used.has(`stage${n}`)) n++;
+  return {
+    id: `stage${n}`,
+    type: 'doc',
+    ref: 'stages/stage.md',
+    artifact: '',
+    gate: 'done',
+    hooks: [(state.flow.checkpoints || ['stage_end'])[0]],
+  };
+}
+
+function focusStageCard(index) {
+  const card = $$('#stages .stage-card')[index];
+  card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  card?.querySelector('[data-field="id"]')?.focus();
+}
+
+function insertStageAt(index) {
+  if (!state.flow) return;
+  const stages = (state.flow.stages ||= []);
+  const stage = makeStage();
+  stages.splice(index, 0, stage);
+  state.selectedStage = stage.id;
+  state.selectedEdge = null;
+  markDirty();
+  renderFlow();
+  renderInspector();
+  focusStageCard(index);
+}
+
+// 在一条边上插入节点：from -> new（保留原条件）-> to（always，保留原 limit）。
+function insertStageOnEdge(index) {
+  if (!state.flow) return;
+  const edges = (state.flow.edges ||= []);
+  const edge = edges[index];
+  if (!edge) return;
+  const stage = makeStage();
+  state.flow.stages.push(stage);
+  const incoming = { from: edge.from, to: stage.id, when: normalizeWhen(edge.when) };
+  const outgoing = { from: stage.id, to: edge.to, when: 'always' };
+  if (edge.limit != null) outgoing.limit = edge.limit;
+  edges.splice(index, 1, incoming, outgoing);
+  state.selectedStage = stage.id;
+  state.selectedEdge = null;
+  markDirty();
+  renderFlow();
+  renderInspector();
+  refreshYaml();
+  focusStageCard((state.flow.stages || []).length - 1);
+}
+
+function addSuccessor() {
+  if (!state.flow) return;
+  const from = state.selectedStage || state.flow.stages?.[0]?.id;
+  const stage = makeStage();
+  state.flow.stages = [...(state.flow.stages || []), stage];
+  if (from) {
+    state.flow.edges = [...(state.flow.edges || []), { from, to: stage.id, when: 'always' }];
+  }
+  state.selectedStage = stage.id;
+  state.selectedEdge = null;
+  markDirty();
+  renderFlow();
+  renderInspector();
+  refreshYaml();
+  focusStageCard((state.flow.stages || []).length - 1);
+}
+
+function convertToGraph() {
+  if (!state.flow || isGraphFlow(state.flow)) return;
+  const stages = state.flow.stages || [];
+  state.flow.version = 3;
+  state.flow.edges = stages.slice(0, -1).map((stage, i) => ({ from: stage.id, to: stages[i + 1].id, when: 'always' }));
+  state.selectedEdge = null;
+  markDirty();
+  renderFlow();
+  renderInspector();
+  refreshYaml();
+  setStatus(L('status.convertedGraph'), 'ok');
+}
+
+function deleteSelectedEdge() {
+  if (!state.flow || state.selectedEdge == null) return;
+  const edges = state.flow.edges || [];
+  if (!edges[state.selectedEdge]) return;
+  edges.splice(state.selectedEdge, 1);
+  state.selectedEdge = null;
+  markDirty();
+  renderFlowchart();
+  refreshYaml();
+}
+
+function deleteStageAt(index) {
+  if (!state.flow) return;
+  const stages = state.flow.stages || [];
+  const stage = stages[index];
+  if (!stage) return;
+  const edges = state.flow.edges || [];
+  const incident = edges.filter((edge) => edge.from === stage.id || edge.to === stage.id);
+  const key = isGraphFlow(state.flow) && incident.length
+    ? 'confirm.deleteStageEdges'
+    : 'confirm.deleteStage';
+  if (!confirm(L(key, { id: stage.id }))) return;
+  stages.splice(index, 1);
+  if (incident.length) {
+    state.flow.edges = edges.filter((edge) => edge.from !== stage.id && edge.to !== stage.id);
+  }
+  state.selectedEdge = null;
+  if (state.profile?.bindings) delete state.profile.bindings[stage.id];
+  if (state.selectedStage === stage.id) {
+    state.selectedStage = stages[index]?.id || stages[index - 1]?.id || null;
+  }
+  markDirty();
+  renderFlow();
+  renderInspector();
+}
+
 /* ---------------- 事件 ---------------- */
 
 function bindEvents() {
@@ -862,24 +1140,6 @@ function bindEvents() {
     } catch (err) { setStatus(err.message, 'err'); }
   });
 
-  $('#btn-add-stage').addEventListener('click', () => {
-    if (!state.flow) return;
-    const used = new Set((state.flow.stages || []).map((s) => s.id));
-    let n = used.size + 1;
-    while (used.has(`stage${n}`)) n++;
-    state.flow.stages.push({
-      id: `stage${n}`,
-      type: 'doc',
-      ref: 'stages/stage.md',
-      artifact: '',
-      gate: 'done',
-      hooks: [(state.flow.checkpoints || ['stage_end'])[0]],
-    });
-    markDirty();
-    renderFlow();
-    renderInspector();
-  });
-
   $('#flow-meta').addEventListener('input', (e) => {
     const key = e.target.dataset.meta;
     if (!key || !state.flow) return;
@@ -901,58 +1161,170 @@ function bindEvents() {
   stagesEl.addEventListener('input', onStageEdit);
   stagesEl.addEventListener('change', onStageEdit);
   stagesEl.addEventListener('click', async (e) => {
+    const card = e.target.closest('.stage-card');
+    if (card && state.flow) {
+      const stage = state.flow.stages[+card.dataset.index];
+      if (stage) selectStage(stage.id);
+    }
     const viewSkill = e.target.closest('[data-view-skill]')?.dataset.viewSkill;
     if (viewSkill) {
       try {
         const skill = await api(`/api/skill?name=${encodeURIComponent(viewSkill)}`);
         openSkillModal(skill, false, true);
       } catch (err) { setStatus(err.message, 'err'); }
+    }
+  });
+
+  // 流程图：v2 节点排序 / 连线插入 / 节点删除；v3 拖端口连边 / 点边改条件 / 边上插节点。
+  const chartEl = $('#flowchart');
+  chartEl.addEventListener('click', (e) => {
+    const split = e.target.closest('[data-split-edge]');
+    if (split) { insertStageOnEdge(+split.dataset.splitEdge); return; }
+
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'add-successor') { addSuccessor(); return; }
+    if (action === 'convert-graph') { convertToGraph(); return; }
+    if (action === 'delete-edge') { deleteSelectedEdge(); return; }
+
+    const del = e.target.closest('[data-del-stage]');
+    if (del) { deleteStageAt(+del.dataset.delStage); return; }
+    const insertAt = e.target.closest('[data-insert-stage]')?.dataset.insertStage;
+    if (insertAt !== undefined) { insertStageAt(+insertAt); return; }
+
+    if (e.target.closest('.flow-port')) return;
+
+    const edgeEl = e.target.closest('[data-edge-index]');
+    if (edgeEl && !e.target.closest('.edge-editor')) {
+      state.selectedEdge = +edgeEl.dataset.edgeIndex;
+      renderFlowchart();
       return;
     }
-    if (e.target.closest('[data-action="del-stage"]')) {
-      const card = e.target.closest('.stage-card');
-      const i = +card.dataset.index;
-      const stage = state.flow.stages[i];
-      if (!confirm(L('confirm.deleteStage', { id: stage.id }))) return;
-      state.flow.stages.splice(i, 1);
-      if (state.profile.bindings) delete state.profile.bindings[stage.id];
+
+    const node = e.target.closest('.flow-node');
+    if (!node) return;
+    const stage = state.flow?.stages?.[+node.dataset.index];
+    if (stage) selectStage(stage.id, true);
+  });
+
+  chartEl.addEventListener('change', (e) => {
+    if (!isGraphFlow(state.flow) || state.selectedEdge == null) return;
+    const edge = (state.flow.edges || [])[state.selectedEdge];
+    if (!edge) return;
+    if (e.target.dataset.edgeWhen) {
+      edge.when = e.target.value === 'status' ? { status: '' } : e.target.value;
+    } else if (e.target.dataset.edgeStatus) {
+      edge.when = { status: e.target.value.trim() };
+    } else if (e.target.dataset.edgeLimit) {
+      if (e.target.value === '') {
+        delete edge.limit;
+      } else {
+        const value = Number(e.target.value);
+        if (!Number.isInteger(value) || value < 1) {
+          setStatus(L('graph.limitInvalid'), 'err');
+          renderFlowchart();
+          return;
+        }
+        edge.limit = value;
+      }
+    } else {
+      return;
+    }
+    markDirty();
+    renderFlowchart();
+    refreshYaml();
+  });
+
+  // 从节点右侧端口拖到另一个节点，创建一条 always 边。
+  chartEl.addEventListener('pointerdown', (e) => {
+    const port = e.target.closest('.flow-port');
+    if (!port || !isGraphFlow(state.flow)) return;
+    const node = port.closest('.flow-node');
+    const graph = $('.flow-graph', chartEl);
+    if (!node || !graph) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = graph.getBoundingClientRect();
+    const box = port.getBoundingClientRect();
+    graphDrag = {
+      fromId: node.dataset.stageId,
+      graph,
+      x1: box.left + box.width / 2 - rect.left,
+      y1: box.top + box.height / 2 - rect.top,
+    };
+    const temp = $('#temp-edge');
+    if (temp) {
+      temp.setAttribute('d', `M ${graphDrag.x1} ${graphDrag.y1} L ${graphDrag.x1} ${graphDrag.y1}`);
+      temp.classList.add('active');
+    }
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!graphDrag) return;
+    const rect = graphDrag.graph.getBoundingClientRect();
+    const x2 = e.clientX - rect.left;
+    const y2 = e.clientY - rect.top;
+    const temp = $('#temp-edge');
+    if (temp) {
+      temp.setAttribute('d', `M ${graphDrag.x1} ${graphDrag.y1} C ${graphDrag.x1 + 40} ${graphDrag.y1}, ${x2 - 40} ${y2}, ${x2} ${y2}`);
+    }
+  });
+
+  const endGraphDrag = (e) => {
+    if (!graphDrag) return;
+    const { fromId } = graphDrag;
+    const temp = $('#temp-edge');
+    temp?.classList.remove('active');
+    graphDrag = null;
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.flow-node');
+    const toId = target?.dataset.stageId;
+    if (!toId || toId === fromId) return;
+    const edges = (state.flow.edges ||= []);
+    if (edges.some((edge) => edge.from === fromId && edge.to === toId && normalizeWhen(edge.when) === 'always')) {
+      setStatus(L('status.edgeExists'), 'err');
+      return;
+    }
+    edges.push({ from: fromId, to: toId, when: 'always' });
+    markDirty();
+    renderFlowchart();
+    refreshYaml();
+  };
+  document.addEventListener('pointerup', endGraphDrag);
+  document.addEventListener('pointercancel', endGraphDrag);
+
+  let dragIndex = null;
+  chartEl.addEventListener('dragstart', (e) => {
+    if (isGraphFlow(state.flow)) return;
+    const node = e.target.closest('.flow-node');
+    if (!node) return;
+    dragIndex = +node.dataset.index;
+    node.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  chartEl.addEventListener('dragend', () => {
+    dragIndex = null;
+    $$('#flowchart .flow-node').forEach((n) => n.classList.remove('dragging', 'drag-over'));
+  });
+  chartEl.addEventListener('dragover', (e) => {
+    const node = e.target.closest('.flow-node');
+    if (!node || dragIndex == null) return;
+    e.preventDefault();
+    $$('#flowchart .flow-node').forEach((n) => n.classList.remove('drag-over'));
+    node.classList.add('drag-over');
+  });
+  chartEl.addEventListener('drop', (e) => {
+    const node = e.target.closest('.flow-node');
+    if (!node || dragIndex == null) return;
+    e.preventDefault();
+    const to = +node.dataset.index;
+    if (to !== dragIndex) {
+      const arr = state.flow.stages;
+      const [moved] = arr.splice(dragIndex, 1);
+      arr.splice(to, 0, moved);
       markDirty();
       renderFlow();
       renderInspector();
     }
-  });
-
-  let dragIndex = null;
-  stagesEl.addEventListener('dragstart', (e) => {
-    const card = e.target.closest('.stage-card');
-    if (!card) return;
-    dragIndex = +card.dataset.index;
-    card.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  stagesEl.addEventListener('dragend', () => {
     dragIndex = null;
-    $$('.stage-card').forEach((c) => c.classList.remove('dragging', 'drag-over'));
-  });
-  stagesEl.addEventListener('dragover', (e) => {
-    const card = e.target.closest('.stage-card');
-    if (!card || dragIndex == null) return;
-    e.preventDefault();
-    $$('.stage-card').forEach((c) => c.classList.remove('drag-over'));
-    card.classList.add('drag-over');
-  });
-  stagesEl.addEventListener('drop', (e) => {
-    const card = e.target.closest('.stage-card');
-    if (!card || dragIndex == null) return;
-    e.preventDefault();
-    const to = +card.dataset.index;
-    const arr = state.flow.stages;
-    const [moved] = arr.splice(dragIndex, 1);
-    arr.splice(to, 0, moved);
-    dragIndex = null;
-    markDirty();
-    renderFlow();
-    renderInspector();
   });
 
   $('.tabs').addEventListener('click', (e) => {
@@ -980,11 +1352,20 @@ function onStageEdit(e) {
     if (field === 'id') {
       const old = stage.id;
       stage.id = value;
+      if (state.selectedStage === old) state.selectedStage = value;
+      for (const edge of state.flow.edges || []) {
+        if (edge.from === old) edge.from = value;
+        if (edge.to === old) edge.to = value;
+      }
       renameBindingKey(old, value);
+    } else if (field === 'join') {
+      if (value === 'any') delete stage.join;
+      else stage.join = value;
     } else {
       stage[field] = value;
     }
     markDirty();
+    if (field === 'id' || field === 'join') renderFlowchart();
     if (field === 'type') renderStages();
     if (field === 'ref' && stage.type === 'skill') {
       const hint = card.querySelector('[data-skill-desc]');

@@ -1,0 +1,95 @@
+# graph-demo 流程的 skillgate 策略（v3 图流程）。
+# 复制到目标项目的 .skillgate/done.yaml 后生效；tests-pass 请换成项目测试命令。
+
+name: graph-demo
+finishLine:
+  - git push
+timeout: 600000
+gates:
+  - id: brief-approved
+    type: file-contains
+    file: docs/specs/current/00-brief.md
+    pattern: 'status: approved'
+    when:
+      changed:
+        - docs/specs/*/00-brief.md
+  - id: design-done
+    type: file-contains
+    file: docs/specs/current/10-design.md
+    pattern: 'status: done'
+    when:
+      changed:
+        - docs/specs/*/10-design.md
+  - id: research-done
+    type: file-contains
+    file: docs/specs/current/15-research.md
+    pattern: 'status: done'
+    when:
+      changed:
+        - docs/specs/*/15-research.md
+  - id: tasks-approved
+    type: file-contains
+    file: docs/specs/current/20-tasks.md
+    pattern: 'status: approved'
+    when:
+      changed:
+        - docs/specs/*/20-tasks.md
+  - id: implement-done
+    type: file-contains
+    file: docs/specs/current/30-impl.md
+    pattern: 'status: done'
+    when:
+      changed:
+        - docs/specs/*/30-impl.md
+  - id: review-pass
+    type: file-contains
+    file: docs/specs/current/35-review.md
+    pattern: 'status: pass'
+    when:
+      changed:
+        - docs/specs/*/35-review.md
+  - id: fix-done
+    type: file-contains
+    file: docs/specs/current/36-fix.md
+    pattern: 'status: done'
+    when:
+      changed:
+        - docs/specs/*/36-fix.md
+  - id: verify-pass
+    type: file-contains
+    file: docs/specs/current/40-verify.md
+    pattern: 'status: pass'
+    when:
+      changed:
+        - docs/specs/*/40-verify.md
+  - id: archive-done
+    type: file-exists
+    file: docs/specs
+    when:
+      changed:
+        - docs/specs/**
+  - id: tests-pass
+    type: command
+    timeout: 540000
+    run: 'sh -c ''echo "TODO: 换成项目测试命令"; exit 1'''
+    when:
+      changed:
+        - docs/specs/*/40-verify.md
+  - id: instruction-sync
+    type: instruction-sync
+    level: warn
+  - id: instruction-refs
+    type: instruction-refs
+    level: warn
+  - id: archive-indexed
+    type: command
+    run: sh -c 'grep -q "$(basename "$(readlink docs/specs/current)")" docs/specs/INDEX.md'
+    when:
+      changed:
+        - docs/specs/INDEX.md
+  - id: flow-trace
+    type: command
+    run: node .claude/flows/flow-trace-check.mjs graph-demo docs/specs/current/flow-trace.json
+    when:
+      changed:
+        - docs/specs/**

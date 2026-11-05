@@ -25,6 +25,30 @@ export const FIELD_GROUPS = [
         key: 'flow.checkpoints', label: '动作槽位', tip: 'git 动作可以插入的位置：task_end（skill 阶段内每完成一个任务）、stage_end（每个阶段结束时）和 finish（流程结束时）。不需要调整时保持默认。',
         en: { label: 'Checkpoints', tip: 'Where git actions can run: task_end (after each task inside a skill stage), stage_end (end of each stage), finish (end of the flow). Keep the default unless needed.' },
       },
+      {
+        key: 'flow.version', label: '流程版本', tip: '2 = 单链流程；3 = 图流程，支持条件分支、并发和回环。编辑器里用「转为图流程」从 v2 升级到 v3。',
+        en: { label: 'Flow version', tip: '2 = linear flow; 3 = graph flow with conditional branches, concurrency and loops. Use "Convert to graph flow" in the editor to upgrade a v2 flow.' },
+      },
+      {
+        key: 'edge.from', label: '连线起点', tip: '这条边从哪个阶段出发；起点阶段完成并满足条件后激活。',
+        en: { label: 'Edge source', tip: 'Stage this edge starts from; it activates after that stage completes and the condition matches.' },
+      },
+      {
+        key: 'edge.to', label: '连线终点', tip: '这条边指向哪个阶段；终点阶段根据 join（any/all）决定何时执行。',
+        en: { label: 'Edge target', tip: 'Stage this edge points to; the target runs according to its join setting (any/all).' },
+      },
+      {
+        key: 'edge.when', label: '连线条件', tip: 'always = 源阶段完成即走；pass / fail = 按源阶段的产物门禁结果分支；status = 按产物 frontmatter 的 status 值分支。',
+        en: { label: 'Edge condition', tip: 'always = follow when the source stage completes; pass / fail = branch on the source stage gate result; status = branch on the artifact frontmatter status.' },
+      },
+      {
+        key: 'edge.status', label: '条件状态值', tip: '连线条件为 status 时，产物 frontmatter 的 status 必须等于这个值才走这条边。',
+        en: { label: 'Status value', tip: 'When the edge condition is status, follow this edge only if the artifact frontmatter status equals this value.' },
+      },
+      {
+        key: 'edge.limit', label: '回环上限', tip: '这条边最多被穿越多少次。回环必须至少有一条边设置上限，防止无限循环；留空表示不限。',
+        en: { label: 'Loop limit', tip: 'Maximum times this edge may be traversed. Every cycle needs at least one limited edge to terminate; leave empty for no limit.' },
+      },
     ],
   },
   {
@@ -58,6 +82,10 @@ export const FIELD_GROUPS = [
       {
         key: 'stage.hooks', label: '动作槽位', tip: '这个阶段要触发哪些 git 动作槽位，例如 stage_end；具体执行 commit 还是 push 由项目配置决定。',
         en: { label: 'Checkpoints', tip: 'Which git action checkpoints this stage triggers, e.g. stage_end. What runs is decided by the project config.' },
+      },
+      {
+        key: 'stage.join', label: '汇合方式', tip: '仅 v3 图流程：any = 任一入边激活就执行（条件分支汇合）；all = 所有入边都激活才执行（fan-out 汇合）。',
+        en: { label: 'Join', tip: 'v3 graph flows only: any = run when any incoming edge is active (conditional merge); all = wait for every incoming edge (fan-out join).' },
       },
     ],
   },

@@ -1,0 +1,90 @@
+name: graph-demo
+version: 3
+description: 图流程演示：并发设计/调研 → 任务 → 实现 → 审查失败回环 → 验证 → 归档
+policy: policy.yaml
+artifacts: docs/specs/current
+archive: docs/specs
+
+checkpoints: [stage_end, finish]
+
+stages:
+  - id: brief
+    type: doc
+    ref: stages/brief.md
+    artifact: 00-brief.md
+    gate: approved
+    approval: true
+    hooks: [stage_end]
+
+  # design 和 research 同时 ready，由 v3 runner 并发执行。
+  - id: design
+    type: doc
+    ref: stages/design.md
+    artifact: 10-design.md
+    gate: done
+    hooks: [stage_end]
+
+  - id: research
+    type: doc
+    ref: stages/research.md
+    artifact: 15-research.md
+    gate: done
+    hooks: [stage_end]
+
+  # join: all — 等 design 和 research 都完成。
+  - id: tasks
+    type: doc
+    ref: stages/tasks.md
+    artifact: 20-tasks.md
+    gate: approved
+    approval: true
+    join: all
+    hooks: [stage_end]
+
+  - id: implement
+    type: skill
+    ref: df-implement
+    artifact: 30-impl.md
+    gate: done
+    hooks: [stage_end]
+
+  - id: review
+    type: skill
+    ref: code-review
+    artifact: 35-review.md
+    gate: pass
+    hooks: [stage_end]
+
+  # review 失败时进入 fix，修完后回到 review；最多回环 3 次。
+  - id: fix
+    type: skill
+    ref: df-implement
+    artifact: 36-fix.md
+    gate: done
+    hooks: [stage_end]
+
+  - id: verify
+    type: skill
+    ref: df-verify
+    artifact: 40-verify.md
+    gate: pass
+    hooks: [stage_end]
+
+  - id: archive
+    type: doc
+    ref: stages/archive.md
+    artifact: docs/specs
+    gate: done
+    hooks: [stage_end, finish]
+
+edges:
+  - { from: brief, to: design }
+  - { from: brief, to: research }
+  - { from: design, to: tasks }
+  - { from: research, to: tasks }
+  - { from: tasks, to: implement }
+  - { from: implement, to: review }
+  - { from: review, to: verify, when: pass }
+  - { from: review, to: fix, when: fail }
+  - { from: fix, to: review, limit: 3 }
+  - { from: verify, to: archive }

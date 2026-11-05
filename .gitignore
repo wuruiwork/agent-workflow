@@ -8,4 +8,5 @@ workspaces/
 # 流程门禁的本地状态
 .skillgate/phase
 .skillgate/evidence/
+.skillgate/flow-state.json
 .claude/flows/profile.local.yaml
