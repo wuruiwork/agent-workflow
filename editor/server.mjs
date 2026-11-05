@@ -533,8 +533,11 @@ async function handleApi(req, res, url) {
 function serveStatic(req, res, url) {
   let rel = decodeURIComponent(url.pathname);
   if (rel === '/') rel = '/index.html';
-  const file = path.resolve(__dirname, '.' + rel);
-  if (!isInside(file, __dirname) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+  // 编辑器与 flow-runner 共用同一套图引擎，避免校验/布局逻辑分叉。
+  const file = rel === '/flow-graph.mjs'
+    ? path.join(REPO_ROOT, 'skills', 'flow-runner', 'scripts', 'flow-graph.mjs')
+    : path.resolve(__dirname, '.' + rel);
+  if ((!isInside(file, __dirname) && rel !== '/flow-graph.mjs') || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('404');
     return;
